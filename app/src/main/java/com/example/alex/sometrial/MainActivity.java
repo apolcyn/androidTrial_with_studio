@@ -1,9 +1,13 @@
 package com.example.alex.sometrial;
 
+import android.content.Context;
+import android.location.LocationManager;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
 import android.view.Menu;
 import android.view.MenuItem;
+import android.location.Location;
+import android.widget.TextView;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -11,6 +15,26 @@ public class MainActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
+
+        LocationManager locationManager;
+        String svcName = Context.LOCATION_SERVICE;
+        locationManager = (LocationManager)getSystemService(svcName);
+
+        String provider = LocationManager.GPS_PROVIDER;
+        Location loc = locationManager.getLastKnownLocation(provider);
+        updateWithNewLocation(loc);
+    }
+
+    private void updateWithNewLocation(Location loc) {
+        TextView myLocationText = (TextView)findViewById(R.id.myLocationText);
+
+        String latLongString = "No location found";
+        if(loc != null) {
+            double lat = loc.getLatitude();
+            double lon = loc.getLongitude();
+            latLongString = "Lat: " + lat + ". Long: " + lon;
+        }
+        myLocationText.setText("Your current position is " + latLongString);
     }
 
     @Override
