@@ -12,6 +12,7 @@ import com.google.android.gms.common.api.GoogleApiClient.ConnectionCallbacks;
 import com.google.android.gms.common.api.GoogleApiClient.OnConnectionFailedListener;
 import com.google.android.gms.location.LocationServices;
 import com.google.android.gms.common.ConnectionResult;
+import com.google.android.gms.R;
 
 public class MainActivity extends AppCompatActivity implements
         ConnectionCallbacks, OnConnectionFailedListener {
@@ -84,8 +85,9 @@ public class MainActivity extends AppCompatActivity implements
         mLastLocation = LocationServices.FusedLocationApi.getLastLocation(
                 mGoogleApiClient);
         if (mLastLocation != null) {
-            mLatitudeText.setText(String.valueOf(mLastLocation.getLatitude()));
-            mLongitudeText.setText(String.valueOf(mLastLocation.getLongitude()));
+            ((TextView)findViewById(R.id.myLocationText)).setText("your coordinates are "
+                    + String.valueOf(mLastLocation.getLatitude()) + " and "
+                    + String.valueOf(mLastLocation.getLongitude()));
         }
     }
 
