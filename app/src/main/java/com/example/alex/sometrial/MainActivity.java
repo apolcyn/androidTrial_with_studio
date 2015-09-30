@@ -115,7 +115,7 @@ public class MainActivity extends FragmentActivity implements
             }
         } else {
             // Show dialog using GoogleApiAvailability.getErrorDialog()
-            showErrorDialog(result.getErrorCode());
+            showErrorDialog(result);
             mResolvingError = true;
         }
     }
@@ -123,14 +123,14 @@ public class MainActivity extends FragmentActivity implements
     // The rest of this code is all about building the error dialog
 
     /* Creates a dialog for an error message */
-    private void showErrorDialog(int errorCode) {
+    private void showErrorDialog(ConnectionResult result) {
         // Create a fragment for the error dialog
         ErrorDialogFragment dialogFragment = new ErrorDialogFragment();
         // Pass the error that should be displayed
         Bundle args = new Bundle();
-        args.putInt(DIALOG_ERROR, errorCode);
+        args.putInt(DIALOG_ERROR, result.getErrorCode());
         dialogFragment.setArguments(args);
-        ((TextView)findViewById(R.id.myLocationText)).setText("An error occurred in connecting. code " + errorCode);
+        ((TextView)findViewById(R.id.myLocationText)).setText("An error occurred in connecting. code " + result.getErrorCode());
         // dialogFragment.show(getSupportFragmentManager(), "errordialog");
         // TODO: figure this out
     }
