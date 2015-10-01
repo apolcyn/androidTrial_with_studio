@@ -18,9 +18,14 @@ import com.google.android.gms.common.api.GoogleApiClient;
 import com.google.android.gms.common.api.GoogleApiClient.ConnectionCallbacks;
 import com.google.android.gms.common.api.GoogleApiClient.OnConnectionFailedListener;
 import com.google.android.gms.location.LocationServices;
+import com.google.android.gms.maps.GoogleMap;
+import com.google.android.gms.maps.MapFragment;
+import com.google.android.gms.maps.OnMapReadyCallback;
+import com.google.android.gms.maps.model.LatLng;
+import com.google.android.gms.maps.model.MarkerOptions;
 
 public class MainActivity extends FragmentActivity implements
-        ConnectionCallbacks, OnConnectionFailedListener {
+        ConnectionCallbacks, OnConnectionFailedListener, OnMapReadyCallback {
     private GoogleApiClient mGoogleApiClient;
     // Request code to use when launching the resolution activity
     private static final int REQUEST_RESOLVE_ERROR = 1001;
@@ -31,6 +36,7 @@ public class MainActivity extends FragmentActivity implements
     private boolean mResolvingError = false;
     // TODO: figure out if should save this as in instance variable instead, and load and save it in onCreate and onSaveInstanceState
     // , see https://developers.google.com/android/guides/api-client#handle_connection_failure
+    private static Location mLastLocation;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -84,13 +90,29 @@ public class MainActivity extends FragmentActivity implements
     public void onConnected(Bundle connectionHint) {
         // Connected to Google Play services!
         // The good stuff goes here.
-        Location mLastLocation = LocationServices.FusedLocationApi.getLastLocation(
+        mLastLocation = LocationServices.FusedLocationApi.getLastLocation(
                 mGoogleApiClient);
         if (mLastLocation != null) {
             ((TextView)findViewById(R.id.myLocationText)).setText("your coordinates are "
                     + String.valueOf(mLastLocation.getLatitude()) + " and "
                     + String.valueOf(mLastLocation.getLongitude()));
         }
+        setupMap();
+    }
+
+    private void setupMap() {
+        MapFragment mapFragment = (MapFragment) getFragmentManager().findFragmentById(R.id.map);
+        mapFragment.getMapAsync(this);
+    }
+
+    @Override
+    public void onMapReady(GoogleMap map) {
+        if(mLastLocation == null) {
+            throw new RuntimeException("uninitialized lat and long");
+        }
+        map.addMarker(new MarkerOptions()
+                .position(new LatLng(mLastLocation.getLatitude(), mLastLocation.getLongitude()))
+                .title("Where you are"));
     }
 
     @Override
