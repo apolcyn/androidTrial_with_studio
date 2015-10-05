@@ -17,15 +17,20 @@ import com.google.android.gms.common.GoogleApiAvailability;
 import com.google.android.gms.common.api.GoogleApiClient;
 import com.google.android.gms.common.api.GoogleApiClient.ConnectionCallbacks;
 import com.google.android.gms.common.api.GoogleApiClient.OnConnectionFailedListener;
+import com.google.android.gms.location.LocationRequest;
 import com.google.android.gms.location.LocationServices;
+import com.google.android.gms.maps.CameraUpdate;
+import com.google.android.gms.maps.CameraUpdateFactory;
 import com.google.android.gms.maps.GoogleMap;
 import com.google.android.gms.maps.MapFragment;
 import com.google.android.gms.maps.OnMapReadyCallback;
 import com.google.android.gms.maps.model.LatLng;
 import com.google.android.gms.maps.model.MarkerOptions;
+import com.google.android.gms.location.LocationListener;
+import com.google.android.gms.maps.model.PolylineOptions;
 
 public class MainActivity extends FragmentActivity implements
-        ConnectionCallbacks, OnConnectionFailedListener, OnMapReadyCallback {
+        ConnectionCallbacks, OnConnectionFailedListener, OnMapReadyCallback, LocationListener {
     private GoogleApiClient mGoogleApiClient;
     // Request code to use when launching the resolution activity
     private static final int REQUEST_RESOLVE_ERROR = 1001;
@@ -37,6 +42,7 @@ public class MainActivity extends FragmentActivity implements
     // TODO: figure out if should save this as in instance variable instead, and load and save it in onCreate and onSaveInstanceState
     // , see https://developers.google.com/android/guides/api-client#handle_connection_failure
     private static Location mLastLocation;
+    private static GoogleMap myMap;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -97,12 +103,22 @@ public class MainActivity extends FragmentActivity implements
                     + String.valueOf(mLastLocation.getLatitude()) + " and "
                     + String.valueOf(mLastLocation.getLongitude()));
         }
+        startLocationUpdates();
         setupMap();
     }
 
     private void setupMap() {
         MapFragment mapFragment = (MapFragment) getFragmentManager().findFragmentById(R.id.map);
         mapFragment.getMapAsync(this);
+    }
+
+    protected void startLocationUpdates() {
+        LocationRequest mLocationRequest = new LocationRequest();
+        mLocationRequest.setInterval(10000);
+        mLocationRequest.setFastestInterval(5000);
+        mLocationRequest.setPriority(LocationRequest.PRIORITY_HIGH_ACCURACY);
+
+        LocationServices.FusedLocationApi.requestLocationUpdates(mGoogleApiClient, mLocationRequest, this);
     }
 
     @Override
@@ -113,6 +129,24 @@ public class MainActivity extends FragmentActivity implements
         map.addMarker(new MarkerOptions()
                 .position(new LatLng(mLastLocation.getLatitude(), mLastLocation.getLongitude()))
                 .title("Where you are"));
+        CameraUpdate cameraUpdate = CameraUpdateFactory
+                .newLatLngZoom(new LatLng(mLastLocation.getLatitude(), mLastLocation.getLongitude()), 15);
+        map.moveCamera(cameraUpdate);
+        myMap = map;
+    }
+
+    @Override
+    public void onLocationChanged(Location location) {
+        mLastLocation = location;
+        CameraUpdate cameraUpdate = CameraUpdateFactory
+                .newLatLngZoom(new LatLng(mLastLocation.getLatitude(), mLastLocation.getLongitude()), 15);
+        myMap.moveCamera(cameraUpdate);
+        myMap.addMarker(new MarkerOptions()
+                .position(new LatLng(mLastLocation.getLatitude(), mLastLocation.getLongitude()))
+                .title("Where you are"));
+        addDestinationMarker(new LatLng(mLastLocation.getLatitude() + 2, mLastLocation.getLongitude() + 2));
+        connectLatLng(new LatLng(mLastLocation.getLatitude(), mLastLocation.getLongitude())
+                , new LatLng(mLastLocation.getLatitude() + 2, mLastLocation.getLongitude() + 2));
     }
 
     @Override
@@ -140,6 +174,17 @@ public class MainActivity extends FragmentActivity implements
             showErrorDialog(result);
             mResolvingError = true;
         }
+    }
+
+    private void addDestinationMarker(LatLng other) {
+        myMap.addMarker(new MarkerOptions().position(other).title("destination"));
+    }
+
+    private void connectLatLng(LatLng start, LatLng end) {
+        PolylineOptions polylineOptions = new PolylineOptions();
+        polylineOptions.add(start);
+        polylineOptions.add(end);
+        myMap.addPolyline(polylineOptions);
     }
 
     // The rest of this code is all about building the error dialog
