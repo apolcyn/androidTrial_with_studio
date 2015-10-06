@@ -12,11 +12,17 @@ import android.view.Menu;
 import android.view.MenuItem;
 import android.widget.TextView;
 
+import com.android.volley.RequestQueue;
+import com.android.volley.Response;
+import com.android.volley.VolleyError;
+import com.android.volley.toolbox.JsonArrayRequest;
+import com.android.volley.toolbox.Volley;
 import com.google.android.gms.common.ConnectionResult;
 import com.google.android.gms.common.GoogleApiAvailability;
 import com.google.android.gms.common.api.GoogleApiClient;
 import com.google.android.gms.common.api.GoogleApiClient.ConnectionCallbacks;
 import com.google.android.gms.common.api.GoogleApiClient.OnConnectionFailedListener;
+import com.google.android.gms.location.LocationListener;
 import com.google.android.gms.location.LocationRequest;
 import com.google.android.gms.location.LocationServices;
 import com.google.android.gms.maps.CameraUpdate;
@@ -26,8 +32,11 @@ import com.google.android.gms.maps.MapFragment;
 import com.google.android.gms.maps.OnMapReadyCallback;
 import com.google.android.gms.maps.model.LatLng;
 import com.google.android.gms.maps.model.MarkerOptions;
-import com.google.android.gms.location.LocationListener;
 import com.google.android.gms.maps.model.PolylineOptions;
+
+import org.json.JSONArray;
+import org.json.JSONException;
+import org.json.JSONObject;
 
 public class MainActivity extends FragmentActivity implements
         ConnectionCallbacks, OnConnectionFailedListener, OnMapReadyCallback, LocationListener {
@@ -103,7 +112,6 @@ public class MainActivity extends FragmentActivity implements
                     + String.valueOf(mLastLocation.getLatitude()) + " and "
                     + String.valueOf(mLastLocation.getLongitude()));
         }
-        startLocationUpdates();
         setupMap();
     }
 
@@ -133,6 +141,10 @@ public class MainActivity extends FragmentActivity implements
                 .newLatLngZoom(new LatLng(mLastLocation.getLatitude(), mLastLocation.getLongitude()), 15);
         map.moveCamera(cameraUpdate);
         myMap = map;
+
+        startLocationUpdates();
+        getDirections(new LatLng(mLastLocation.getLatitude(), mLastLocation.getLongitude()),
+                new LatLng(35.300063, -120.658606));
     }
 
     @Override
@@ -144,9 +156,43 @@ public class MainActivity extends FragmentActivity implements
         myMap.addMarker(new MarkerOptions()
                 .position(new LatLng(mLastLocation.getLatitude(), mLastLocation.getLongitude()))
                 .title("Where you are"));
-        addDestinationMarker(new LatLng(mLastLocation.getLatitude() + 2, mLastLocation.getLongitude() + 2));
-        connectLatLng(new LatLng(mLastLocation.getLatitude(), mLastLocation.getLongitude())
-                , new LatLng(mLastLocation.getLatitude() + 2, mLastLocation.getLongitude() + 2));
+    }
+
+    private void getDirections(LatLng start, LatLng dest) {
+        RequestQueue queue = Volley.newRequestQueue(this);
+        String url ="http://darkroast-1085.appspot.com/directions?start_latitude=" + start.latitude
+                + "&start_longitude=" + start.longitude
+                + "&dest_latitude=" + dest.latitude
+                + "&dest_longitude=" + dest.longitude;
+
+        // Request a string response from the provided URL.
+        JsonArrayRequest jsonArrayRequest = new JsonArrayRequest(url,
+                new Response.Listener<JSONArray>() {
+                    @Override
+                    public void onResponse(JSONArray response) {
+                        // Display the first 500 characters of the response string.
+                        for(int i = 0; i < response.length() - 1; i++) {
+                            try {
+                                JSONObject first = (JSONObject) response.get(i);
+                                JSONObject second = (JSONObject) response.get(i + 1);
+                                connectLatLng(new LatLng(new Double(first.get("lat").toString())
+                                        , new Double(first.get("lng").toString()))
+                                        , new LatLng(new Double(second.get("lat").toString())
+                                        , new Double(second.get("lng").toString())));
+                            }
+                            catch (JSONException e) {
+                                throw new RuntimeException("there was an error paring json: " + e.getMessage());
+                            }
+                        }
+                    }
+                }, new Response.ErrorListener() {
+            @Override
+            public void onErrorResponse(VolleyError error) {
+                ((TextView)findViewById(R.id.myLocationText)).setText("An error occurred in connecting. code ");
+            }
+        });
+// Add the request to the RequestQueue.
+        queue.add(jsonArrayRequest);
     }
 
     @Override
