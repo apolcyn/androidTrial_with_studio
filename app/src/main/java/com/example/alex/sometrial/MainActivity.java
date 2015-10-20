@@ -7,15 +7,19 @@ import android.content.Intent;
 import android.content.IntentSender.SendIntentException;
 import android.location.Location;
 import android.os.Bundle;
-import android.support.v4.app.FragmentActivity;
+import android.support.v7.app.AppCompatActivity;
+import android.view.KeyEvent;
 import android.view.Menu;
 import android.view.MenuItem;
+import android.view.inputmethod.EditorInfo;
+import android.widget.EditText;
 import android.widget.TextView;
 
 import com.android.volley.RequestQueue;
 import com.android.volley.Response;
 import com.android.volley.VolleyError;
 import com.android.volley.toolbox.JsonArrayRequest;
+import com.android.volley.toolbox.JsonObjectRequest;
 import com.android.volley.toolbox.Volley;
 import com.google.android.gms.common.ConnectionResult;
 import com.google.android.gms.common.GoogleApiAvailability;
@@ -38,7 +42,7 @@ import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
-public class MainActivity extends FragmentActivity implements
+public class MainActivity extends AppCompatActivity implements
         ConnectionCallbacks, OnConnectionFailedListener, OnMapReadyCallback, LocationListener {
     private GoogleApiClient mGoogleApiClient;
     // Request code to use when launching the resolution activity
@@ -52,6 +56,9 @@ public class MainActivity extends FragmentActivity implements
     // , see https://developers.google.com/android/guides/api-client#handle_connection_failure
     private static Location mLastLocation;
     private static GoogleMap myMap;
+    private final int ZOOM_LEVEL = 17;
+    private static final String BASE_SERVER = "http://darkroast-1085.appspot.com";
+    private static Long locationTrackerId;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -63,6 +70,24 @@ public class MainActivity extends FragmentActivity implements
                 .addOnConnectionFailedListener(this)
                 .addApi(LocationServices.API)
                 .build();
+        setupSearchBox();
+    }
+
+    private void setupSearchBox() {
+        final EditText editText = (EditText) findViewById(R.id.map_search);
+        editText.setOnEditorActionListener(new TextView.OnEditorActionListener() {
+            @Override
+            public boolean onEditorAction(TextView v, int actionId, KeyEvent event) {
+                boolean handled = false;
+                if (actionId == EditorInfo.IME_ACTION_SEARCH) {
+                    getDirectionsDriver(new LatLng(mLastLocation.getLatitude(), mLastLocation.getLongitude())
+                            , editText.getText().toString());
+                    handled = true;
+                    ((TextView) findViewById(R.id.destinationInfo)).setText("Searching for: " + editText.getText().toString());
+                }
+                return handled;
+            }
+        });
     }
 
     @Override
@@ -138,12 +163,12 @@ public class MainActivity extends FragmentActivity implements
                 .position(new LatLng(mLastLocation.getLatitude(), mLastLocation.getLongitude()))
                 .title("Where you are"));
         CameraUpdate cameraUpdate = CameraUpdateFactory
-                .newLatLngZoom(new LatLng(mLastLocation.getLatitude(), mLastLocation.getLongitude()), 15);
+                .newLatLngZoom(new LatLng(mLastLocation.getLatitude(), mLastLocation.getLongitude()), ZOOM_LEVEL);
         map.moveCamera(cameraUpdate);
         myMap = map;
 
         startLocationUpdates();
-        getDirections(new LatLng(mLastLocation.getLatitude(), mLastLocation.getLongitude()),
+        getDirectionsDriver(new LatLng(mLastLocation.getLatitude(), mLastLocation.getLongitude()),
                 new LatLng(35.300063, -120.658606));
     }
 
@@ -151,19 +176,61 @@ public class MainActivity extends FragmentActivity implements
     public void onLocationChanged(Location location) {
         mLastLocation = location;
         CameraUpdate cameraUpdate = CameraUpdateFactory
-                .newLatLngZoom(new LatLng(mLastLocation.getLatitude(), mLastLocation.getLongitude()), 15);
+                .newLatLngZoom(new LatLng(mLastLocation.getLatitude(), mLastLocation.getLongitude()), ZOOM_LEVEL);
         myMap.moveCamera(cameraUpdate);
         myMap.addMarker(new MarkerOptions()
                 .position(new LatLng(mLastLocation.getLatitude(), mLastLocation.getLongitude()))
                 .title("Where you are"));
+        updateLocationTracker();
     }
 
-    private void getDirections(LatLng start, LatLng dest) {
+    private void getDirectionsDriver(LatLng start, String buildingNumber) {
+        String url = BASE_SERVER + "/directions?start_latitude=" + start.latitude
+                + "&start_longitude=" + start.longitude
+                + "&building_number=" + buildingNumber;
+        getDirections(url);
+    }
+
+    private void updateLocationTracker() {
+        String url = BASE_SERVER + "/location_update?latitude=" + mLastLocation.getLatitude()
+                + "&longitude=" + mLastLocation.getLongitude()
+                + "&millis_time_update=" + System.currentTimeMillis();
+        if(locationTrackerId != null) {
+            url += "&source_id=" + locationTrackerId;
+        }
         RequestQueue queue = Volley.newRequestQueue(this);
-        String url ="http://darkroast-1085.appspot.com/directions?start_latitude=" + start.latitude
+
+        JsonObjectRequest jsonObjectRequest = new JsonObjectRequest(url,
+                new Response.Listener<JSONObject>() {
+                    @Override
+                    public void onResponse(JSONObject response) {
+                        try {
+                            locationTrackerId = Long.parseLong(response.get("source_id").toString());
+                        }
+                        catch(JSONException e) {
+                            throw new RuntimeException("error parsing JSON");
+                        }
+                    }
+                }, new Response.ErrorListener() {
+
+                    @Override
+                    public void onErrorResponse(VolleyError error) {
+                        ((TextView)findViewById(R.id.myLocationText)).setText("an error occurred posting a location update");
+                    }
+                });
+        queue.add(jsonObjectRequest);
+    }
+
+    private void getDirectionsDriver(LatLng start, LatLng dest) {
+        String url = BASE_SERVER + "/directions?start_latitude=" + start.latitude
                 + "&start_longitude=" + start.longitude
                 + "&dest_latitude=" + dest.latitude
                 + "&dest_longitude=" + dest.longitude;
+        getDirections(url);
+    }
+
+    private void getDirections(String url) {
+        RequestQueue queue = Volley.newRequestQueue(this);
 
         // Request a string response from the provided URL.
         JsonArrayRequest jsonArrayRequest = new JsonArrayRequest(url,
@@ -188,7 +255,7 @@ public class MainActivity extends FragmentActivity implements
                 }, new Response.ErrorListener() {
             @Override
             public void onErrorResponse(VolleyError error) {
-                ((TextView)findViewById(R.id.myLocationText)).setText("An error occurred in connecting. code ");
+                ((TextView)findViewById(R.id.myLocationText)).setText("An error occurred in connecting. message: " + error.getMessage());
             }
         });
 // Add the request to the RequestQueue.
