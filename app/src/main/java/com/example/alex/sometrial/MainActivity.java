@@ -1,36 +1,20 @@
 package com.example.alex.sometrial;
 
-import android.app.Dialog;
-import android.app.DialogFragment;
-import android.content.DialogInterface;
+import android.content.BroadcastReceiver;
+import android.content.ComponentName;
+import android.content.Context;
 import android.content.Intent;
-import android.content.IntentSender.SendIntentException;
+import android.content.IntentFilter;
+import android.content.ServiceConnection;
 import android.location.Location;
+import android.os.AsyncTask;
 import android.os.Bundle;
+import android.os.IBinder;
 import android.support.v7.app.AppCompatActivity;
-import android.view.KeyEvent;
 import android.view.Menu;
 import android.view.MenuItem;
-import android.view.inputmethod.EditorInfo;
-import android.widget.EditText;
 import android.widget.TextView;
 
-import com.android.volley.RequestQueue;
-import com.android.volley.Response;
-import com.android.volley.VolleyError;
-import com.android.volley.toolbox.JsonArrayRequest;
-import com.android.volley.toolbox.JsonObjectRequest;
-import com.android.volley.toolbox.Volley;
-import com.google.android.gms.common.ConnectionResult;
-import com.google.android.gms.common.GoogleApiAvailability;
-import com.google.android.gms.common.api.GoogleApiClient;
-import com.google.android.gms.common.api.GoogleApiClient.ConnectionCallbacks;
-import com.google.android.gms.common.api.GoogleApiClient.OnConnectionFailedListener;
-import com.google.android.gms.location.LocationListener;
-import com.google.android.gms.location.LocationRequest;
-import com.google.android.gms.location.LocationServices;
-import com.google.android.gms.maps.CameraUpdate;
-import com.google.android.gms.maps.CameraUpdateFactory;
 import com.google.android.gms.maps.GoogleMap;
 import com.google.android.gms.maps.MapFragment;
 import com.google.android.gms.maps.OnMapReadyCallback;
@@ -38,43 +22,63 @@ import com.google.android.gms.maps.model.LatLng;
 import com.google.android.gms.maps.model.MarkerOptions;
 import com.google.android.gms.maps.model.PolylineOptions;
 
-import org.json.JSONArray;
-import org.json.JSONException;
-import org.json.JSONObject;
+import junit.framework.Assert;
 
-public class MainActivity extends AppCompatActivity implements
-        ConnectionCallbacks, OnConnectionFailedListener, OnMapReadyCallback, LocationListener {
-    private GoogleApiClient mGoogleApiClient;
-    // Request code to use when launching the resolution activity
-    private static final int REQUEST_RESOLVE_ERROR = 1001;
+import java.util.LinkedList;
+
+public class MainActivity extends AppCompatActivity implements OnMapReadyCallback {
     // TODO: figure out what this error code means.
     // Unique tag for the error dialog fragment
     private static final String DIALOG_ERROR = "dialog_error";
-    // Bool to track whether the app is already resolving an error
-    private boolean mResolvingError = false;
     // TODO: figure out if should save this as in instance variable instead, and load and save it in onCreate and onSaveInstanceState
     // , see https://developers.google.com/android/guides/api-client#handle_connection_failure
-    private static Location mLastLocation;
     private static GoogleMap myMap;
     private final int ZOOM_LEVEL = 17;
-    private static final String BASE_SERVER = "http://darkroast-1085.appspot.com";
-    private static Long locationTrackerId;
+    private boolean mBound;
+    private LocationUpdater mService;
+    private MyLinkedHashSet<Location> mDrawnLocationUpdates = new MyLinkedHashSet<Location>();
+    private LocationUpdateReceiver mLocationUpdateReceiver;
+    private boolean mapReadyForUpdates = false;
+    private Location mostRecentLocation;
+
+    /** Defines callbacks for service binding, passed to bindService() */
+    private ServiceConnection mConnection = new ServiceConnection() {
+
+        @Override
+        public void onServiceConnected(ComponentName className,
+                                       IBinder service) {
+            // We've bound to LocalService, cast the IBinder and get LocalService instance
+            LocationUpdater.LocalBinder binder = (LocationUpdater.LocalBinder) service;
+            mService = binder.getService();
+            String msg = mService.getHello();
+
+            ((TextView)findViewById(R.id.myLocationText)).setText(msg);
+            mBound = true;
+            registerLocationUpdateReceiver();
+        }
+
+        @Override
+        public void onServiceDisconnected(ComponentName arg0) {
+            unregisterLocationUpdateReceiver();
+            mBound = false;
+        }
+    };
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
-
-        mGoogleApiClient = new GoogleApiClient.Builder(this)
-                .addConnectionCallbacks(this)
-                .addOnConnectionFailedListener(this)
-                .addApi(LocationServices.API)
-                .build();
         setupSearchBox();
+        myMap = null;
+        mapReadyForUpdates = false;
+        mDrawnLocationUpdates.clear();
+        mostRecentLocation = null;
+        setupMap();
+        registerLocationUpdateReceiver();
     }
 
     private void setupSearchBox() {
-        final EditText editText = (EditText) findViewById(R.id.map_search);
+        /*final EditText editText = (EditText) findViewById(R.id.map_search);
         editText.setOnEditorActionListener(new TextView.OnEditorActionListener() {
             @Override
             public boolean onEditorAction(TextView v, int actionId, KeyEvent event) {
@@ -87,21 +91,26 @@ public class MainActivity extends AppCompatActivity implements
                 }
                 return handled;
             }
-        });
+        });*/
     }
 
     @Override
     protected void onStart() {
         super.onStart();
-        if (!mResolvingError) {  // more about this later
-            mGoogleApiClient.connect();
-        }
+
+        Intent intent = new Intent(this, LocationUpdater.class);
+        bindService(intent, mConnection, Context.BIND_AUTO_CREATE);
     }
 
     @Override
     protected void onStop() {
-        mGoogleApiClient.disconnect();
         super.onStop();
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        unregisterLocationUpdateReceiver();
     }
 
     @Override
@@ -126,72 +135,34 @@ public class MainActivity extends AppCompatActivity implements
         return super.onOptionsItemSelected(item);
     }
 
-    @Override
-    public void onConnected(Bundle connectionHint) {
-        // Connected to Google Play services!
-        // The good stuff goes here.
-        mLastLocation = LocationServices.FusedLocationApi.getLastLocation(
-                mGoogleApiClient);
-        if (mLastLocation != null) {
-            ((TextView)findViewById(R.id.myLocationText)).setText("your coordinates are "
-                    + String.valueOf(mLastLocation.getLatitude()) + " and "
-                    + String.valueOf(mLastLocation.getLongitude()));
-        }
-        setupMap();
-    }
-
     private void setupMap() {
         MapFragment mapFragment = (MapFragment) getFragmentManager().findFragmentById(R.id.map);
         mapFragment.getMapAsync(this);
     }
 
-    protected void startLocationUpdates() {
-        LocationRequest mLocationRequest = new LocationRequest();
-        mLocationRequest.setInterval(10000);
-        mLocationRequest.setFastestInterval(5000);
-        mLocationRequest.setPriority(LocationRequest.PRIORITY_HIGH_ACCURACY);
-
-        LocationServices.FusedLocationApi.requestLocationUpdates(mGoogleApiClient, mLocationRequest, this);
-    }
-
     @Override
     public void onMapReady(GoogleMap map) {
-        if(mLastLocation == null) {
-            throw new RuntimeException("uninitialized lat and long");
-        }
-        map.addMarker(new MarkerOptions()
-                .position(new LatLng(mLastLocation.getLatitude(), mLastLocation.getLongitude()))
-                .title("Where you are"));
-        CameraUpdate cameraUpdate = CameraUpdateFactory
-                .newLatLngZoom(new LatLng(mLastLocation.getLatitude(), mLastLocation.getLongitude()), ZOOM_LEVEL);
-        map.moveCamera(cameraUpdate);
         myMap = map;
 
-        startLocationUpdates();
-        getDirectionsDriver(new LatLng(mLastLocation.getLatitude(), mLastLocation.getLongitude()),
-                new LatLng(35.300063, -120.658606));
+        if(mDrawnLocationUpdates.size() > 0) {
+            for(Location temp : mDrawnLocationUpdates.getLinkedList()) {
+                addLocationToLine(temp);
+            }
+        }
+
+        mapReadyForUpdates = true;
+        /*getDirectionsDriver(new LatLng(mLastLocation.getLatitude(), mLastLocation.getLongitude()),
+                new LatLng(35.300063, -120.658606));*/
     }
 
-    @Override
-    public void onLocationChanged(Location location) {
-        mLastLocation = location;
-        CameraUpdate cameraUpdate = CameraUpdateFactory
-                .newLatLngZoom(new LatLng(mLastLocation.getLatitude(), mLastLocation.getLongitude()), ZOOM_LEVEL);
-        myMap.moveCamera(cameraUpdate);
-        myMap.addMarker(new MarkerOptions()
-                .position(new LatLng(mLastLocation.getLatitude(), mLastLocation.getLongitude()))
-                .title("Where you are"));
-        updateLocationTracker();
-    }
-
-    private void getDirectionsDriver(LatLng start, String buildingNumber) {
+   /* private void getDirectionsDriver(LatLng start, String buildingNumber) {
         String url = BASE_SERVER + "/directions?start_latitude=" + start.latitude
                 + "&start_longitude=" + start.longitude
                 + "&building_number=" + buildingNumber;
         getDirections(url);
-    }
+    }*/
 
-    private void updateLocationTracker() {
+   /* private void updateLocationTracker() {
         String url = BASE_SERVER + "/location_update?latitude=" + mLastLocation.getLatitude()
                 + "&longitude=" + mLastLocation.getLongitude()
                 + "&millis_time_update=" + System.currentTimeMillis();
@@ -219,17 +190,17 @@ public class MainActivity extends AppCompatActivity implements
                     }
                 });
         queue.add(jsonObjectRequest);
-    }
+    }*/
 
-    private void getDirectionsDriver(LatLng start, LatLng dest) {
+   /* private void getDirectionsDriver(LatLng start, LatLng dest) {
         String url = BASE_SERVER + "/directions?start_latitude=" + start.latitude
                 + "&start_longitude=" + start.longitude
                 + "&dest_latitude=" + dest.latitude
                 + "&dest_longitude=" + dest.longitude;
         getDirections(url);
-    }
+    }*/
 
-    private void getDirections(String url) {
+  /*  private void getDirections(String url) {
         RequestQueue queue = Volley.newRequestQueue(this);
 
         // Request a string response from the provided URL.
@@ -260,34 +231,7 @@ public class MainActivity extends AppCompatActivity implements
         });
 // Add the request to the RequestQueue.
         queue.add(jsonArrayRequest);
-    }
-
-    @Override
-    public void onConnectionSuspended(int cause) {
-        // The connection has been interrupted.
-        // Disable any UI components that depend on Google APIs
-        // until onConnected() is called.
-    }
-
-    @Override
-    public void onConnectionFailed(ConnectionResult result) {
-        if (mResolvingError) {
-            // Already attempting to resolve an error.
-            return;
-        } else if (result.hasResolution()) {
-            try {
-                mResolvingError = true;
-                result.startResolutionForResult(this, REQUEST_RESOLVE_ERROR);
-            } catch (SendIntentException e) {
-                // There was an error with the resolution intent. Try again.
-                mGoogleApiClient.connect();
-            }
-        } else {
-            // Show dialog using GoogleApiAvailability.getErrorDialog()
-            showErrorDialog(result);
-            mResolvingError = true;
-        }
-    }
+    }*/
 
     private void addDestinationMarker(LatLng other) {
         myMap.addMarker(new MarkerOptions().position(other).title("destination"));
@@ -300,55 +244,74 @@ public class MainActivity extends AppCompatActivity implements
         myMap.addPolyline(polylineOptions);
     }
 
-    // The rest of this code is all about building the error dialog
-
-    /* Creates a dialog for an error message */
-    private void showErrorDialog(ConnectionResult result) {
-        // Create a fragment for the error dialog
-        ErrorDialogFragment dialogFragment = new ErrorDialogFragment();
-        // Pass the error that should be displayed
-        Bundle args = new Bundle();
-        args.putInt(DIALOG_ERROR, result.getErrorCode());
-        dialogFragment.setArguments(args);
-        ((TextView)findViewById(R.id.myLocationText)).setText("An error occurred in connecting. code " + result.getErrorCode());
-        // dialogFragment.show(getSupportFragmentManager(), "errordialog");
-        // TODO: figure this out
-    }
-
-    /* Called from ErrorDialogFragment when the dialog is dismissed. */
-    public void onDialogDismissed() {
-        mResolvingError = false;
-    }
-
-    /* A fragment to display an error dialog */
-    public static class ErrorDialogFragment extends DialogFragment {
-        public ErrorDialogFragment() { }
-
-        @Override
-        public Dialog onCreateDialog(Bundle savedInstanceState) {
-            // Get the error code and retrieve the appropriate dialog
-            int errorCode = this.getArguments().getInt(DIALOG_ERROR);
-            return GoogleApiAvailability.getInstance().getErrorDialog(
-                    this.getActivity(), errorCode, REQUEST_RESOLVE_ERROR);
+    private void addLocationToLine(Location newLocation) {
+        if(newLocation == null) {
+            throw new IllegalArgumentException("new location shouldn't be null");
         }
+        if(mostRecentLocation == null) {
+            addDestinationMarker(new LatLng(newLocation.getLatitude(), newLocation.getLongitude()));
+        }
+        else {
+            Location prev = mostRecentLocation;
+            mostRecentLocation = newLocation;
 
-        @Override
-        public void onDismiss(DialogInterface dialog) {
-            ((MainActivity)getActivity()).onDialogDismissed();
+            connectLatLng(new LatLng(prev.getLatitude(), prev.getLongitude())
+                    , new LatLng(newLocation.getLatitude(), newLocation.getLongitude()));
         }
     }
 
-    @Override
-    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
-        if (requestCode == REQUEST_RESOLVE_ERROR) {
-            mResolvingError = false;
-            if (resultCode == RESULT_OK) {
-                // Make sure the app is not already connected or attempting to connect
-                if (!mGoogleApiClient.isConnecting() &&
-                        !mGoogleApiClient.isConnected()) {
-                    mGoogleApiClient.connect();
+    public class LocationUpdateReceiver extends BroadcastReceiver {
+        public static final String LOCATION_UPDATE = "com.example.alex.sometrial.LOCATION_UPDATE";
+
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            if(intent.getAction() == LOCATION_UPDATE) {
+                if(mapReadyForUpdates) {
+                    new UpdateLocationList().executeOnExecutor(AsyncTask.SERIAL_EXECUTOR, mService.getLocationUpdates());
                 }
             }
         }
+    }
+
+    private void registerLocationUpdateReceiver() {
+        IntentFilter intentFilter = new IntentFilter(LocationUpdateReceiver.LOCATION_UPDATE);
+        intentFilter.addCategory(Intent.CATEGORY_DEFAULT);
+        mLocationUpdateReceiver = new LocationUpdateReceiver();
+        registerReceiver(mLocationUpdateReceiver, intentFilter);
+    }
+
+    private void unregisterLocationUpdateReceiver() {
+        unregisterReceiver(mLocationUpdateReceiver);
+    }
+
+    public class UpdateLocationList extends AsyncTask<LinkedList<Location>, Void, LinkedList<Location>> {
+
+        protected synchronized LinkedList<Location> doInBackground(LinkedList<Location>... locationUpdates) {
+            Assert.assertEquals(1, locationUpdates.length);
+            int startOfNewUpdates = 0;
+
+            LinkedList<Location> list = locationUpdates[0];
+
+            for(Location temp : list) {
+                if(!mDrawnLocationUpdates.contains(temp))
+                    break;
+                startOfNewUpdates++;
+            }
+
+            LinkedList<Location> updates = new LinkedList<>(list.subList(startOfNewUpdates, list.size()));
+
+            for(Location temp : updates) {
+                mDrawnLocationUpdates.add(temp);
+            }
+
+            return updates;
+        }
+
+        protected void onPostExecute(LinkedList<Location> newLocations) {
+            for(Location temp : newLocations) {
+                addLocationToLine(temp);
+            }
+        }
+
     }
 }
