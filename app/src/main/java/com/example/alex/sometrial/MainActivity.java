@@ -15,6 +15,8 @@ import android.view.Menu;
 import android.view.MenuItem;
 import android.widget.TextView;
 
+import com.google.android.gms.maps.CameraUpdate;
+import com.google.android.gms.maps.CameraUpdateFactory;
 import com.google.android.gms.maps.GoogleMap;
 import com.google.android.gms.maps.MapFragment;
 import com.google.android.gms.maps.OnMapReadyCallback;
@@ -33,7 +35,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     // TODO: figure out if should save this as in instance variable instead, and load and save it in onCreate and onSaveInstanceState
     // , see https://developers.google.com/android/guides/api-client#handle_connection_failure
     private static GoogleMap myMap;
-    private final int ZOOM_LEVEL = 17;
+    private final int ZOOM_LEVEL = 18;
     private boolean mBound;
     private LocationUpdater mService;
     private MyLinkedHashSet<Location> mDrawnLocationUpdates = new MyLinkedHashSet<Location>();
@@ -54,12 +56,10 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
             ((TextView)findViewById(R.id.myLocationText)).setText(msg);
             mBound = true;
-            registerLocationUpdateReceiver();
         }
 
         @Override
         public void onServiceDisconnected(ComponentName arg0) {
-            unregisterLocationUpdateReceiver();
             mBound = false;
         }
     };
@@ -74,7 +74,18 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         mDrawnLocationUpdates.clear();
         mostRecentLocation = null;
         setupMap();
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
         registerLocationUpdateReceiver();
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        unregisterLocationUpdateReceiver();
     }
 
     private void setupSearchBox() {
@@ -110,7 +121,6 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        unregisterLocationUpdateReceiver();
     }
 
     @Override
@@ -144,11 +154,8 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     public void onMapReady(GoogleMap map) {
         myMap = map;
 
-        if(mDrawnLocationUpdates.size() > 0) {
-            for(Location temp : mDrawnLocationUpdates.getLinkedList()) {
-                addLocationToLine(temp);
-            }
-        }
+        new UpdateLocationList().executeOnExecutor(AsyncTask.SERIAL_EXECUTOR
+                , mDrawnLocationUpdates.getLinkedList());
 
         mapReadyForUpdates = true;
         /*getDirectionsDriver(new LatLng(mLastLocation.getLatitude(), mLastLocation.getLongitude()),
@@ -250,14 +257,16 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         }
         if(mostRecentLocation == null) {
             addDestinationMarker(new LatLng(newLocation.getLatitude(), newLocation.getLongitude()));
+            mostRecentLocation = newLocation;
         }
         else {
-            Location prev = mostRecentLocation;
-            mostRecentLocation = newLocation;
-
-            connectLatLng(new LatLng(prev.getLatitude(), prev.getLongitude())
+            connectLatLng(new LatLng(mostRecentLocation.getLatitude(), mostRecentLocation.getLongitude())
                     , new LatLng(newLocation.getLatitude(), newLocation.getLongitude()));
+            mostRecentLocation = newLocation;
         }
+        CameraUpdate cameraUpdate = CameraUpdateFactory.newLatLngZoom(
+                new LatLng(mostRecentLocation.getLatitude(), mostRecentLocation.getLongitude()), ZOOM_LEVEL);
+        myMap.moveCamera(cameraUpdate);
     }
 
     public class LocationUpdateReceiver extends BroadcastReceiver {
@@ -298,7 +307,12 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                 startOfNewUpdates++;
             }
 
-            LinkedList<Location> updates = new LinkedList<>(list.subList(startOfNewUpdates, list.size()));
+            LinkedList<Location> updates = null;
+
+            if(list.size() > 0)
+                updates = new LinkedList<>(list.subList(startOfNewUpdates, list.size()));
+            else
+                updates = new LinkedList<Location>();
 
             for(Location temp : updates) {
                 mDrawnLocationUpdates.add(temp);

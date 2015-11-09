@@ -47,16 +47,17 @@ public class LocationUpdater extends Service
     }
 
     @Override
-    public IBinder onBind(Intent intent) {
-
-        if(running) {
-            return mBinder;
-        }
-        else {
+    public int onStartCommand(Intent intent, int flags, int startId) {
+        if(!running) {
             running = true;
-            run();
-            return mBinder;
+            new Thread(this).start();
         }
+        return START_STICKY;
+    }
+
+    @Override
+    public IBinder onBind(Intent intent) {
+        return mBinder;
     }
 
    /* @Override
