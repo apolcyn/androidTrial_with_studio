@@ -6,6 +6,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.ServiceConnection;
+import android.content.SharedPreferences;
 import android.location.Location;
 import android.os.AsyncTask;
 import android.os.Bundle;
@@ -139,6 +140,17 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
         //noinspection SimplifiableIfStatement
         if (id == R.id.action_settings) {
+            return true;
+        }
+        else if(id == R.id.send_location_data) {
+            Intent intent = new Intent(this, LocationUpdateServerUpdater.class);
+            startService(intent);
+            return true;
+        }
+        else if(id == R.id.erase_location_data) {
+            SharedPreferences.Editor editor = getSharedPreferences(LocationUpdater.LOCATION_UPDATES_TABLE, MODE_PRIVATE).edit();
+            editor.clear();
+            editor.commit();
             return true;
         }
 
