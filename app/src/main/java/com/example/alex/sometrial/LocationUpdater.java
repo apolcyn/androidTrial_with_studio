@@ -1,8 +1,6 @@
 package com.example.alex.sometrial;
 
 import android.app.Service;
-import android.content.BroadcastReceiver;
-import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.location.Location;
@@ -11,6 +9,12 @@ import android.os.Bundle;
 import android.os.IBinder;
 import android.util.Log;
 
+import com.android.volley.Request;
+import com.android.volley.RequestQueue;
+import com.android.volley.Response;
+import com.android.volley.VolleyError;
+import com.android.volley.toolbox.JsonArrayRequest;
+import com.android.volley.toolbox.Volley;
 import com.google.android.gms.common.ConnectionResult;
 import com.google.android.gms.common.api.GoogleApiClient;
 import com.google.android.gms.common.api.GoogleApiClient.ConnectionCallbacks;
@@ -21,22 +25,39 @@ import com.google.android.gms.location.LocationServices;
 
 import junit.framework.Assert;
 
+import org.json.JSONArray;
 import org.json.JSONException;
-import org.json.JSONObject;
-import org.json.JSONTokener;
 
 import java.util.LinkedList;
-import java.util.Map;
-import java.util.TreeSet;
+import java.util.List;
+
+
+/*
+Storing location updates in a linked list in shared preferences.
+Head of linked list: if it exists, it point to the first JSON object in shared preferences
+if the list is empty, then there is no mapping for the head in shared preferences.
+
+Tail of linked list: if the list is non-empty, it point to the key of the last item in the list.
+if the list is empty, then it has no mapping.
+
+Each JSON object contains a field that is the key of the next time in shared preferences.
+If they are at the end of the list, then their next key is "-1".
+ */
 
 public class LocationUpdater extends Service
         implements ConnectionCallbacks, OnConnectionFailedListener, LocationListener, Runnable {
     private boolean running;
     private boolean mResolvingError;
-    private static Location sLastLocation;
-    private static LinkedList<Location> sLocationUpdates = new LinkedList<Location>();
     private static final int REQUEST_RESOLVE_ERROR = 1001;
     public static final String LOCATION_UPDATES_TABLE = "location_update_preferences_table";
+    public static final String LOGS_TAG = "my_logs";
+    private static final String BASE_SERVER = "http://darkroast-1085.appspot.com/";
+
+
+    // key for the first item in the list. points to nothing if list is empty.
+    public static final String LOCATION_DATA_HEAD = "location_data_shared_pref_head";
+    // key for the last item in the list. points to nothing if list is empty.
+    private static String LOCATION_DATA_TAIL = "location_data_shared_pref_tail";
 
     // Binder given to clients
     private final IBinder mBinder = new LocalBinder();
@@ -48,25 +69,11 @@ public class LocationUpdater extends Service
         }
     }
 
-    public String getHello() {
-        SharedPreferences preferences = getSharedPreferences("com.example.alex.stuff", Context.MODE_PRIVATE);
-        SharedPreferences.Editor writer = preferences.edit();
-        int temp = preferences.getInt("counter", 0);
-        writer.putInt("counter", ++temp);
-        writer.commit();
-
-        return "hello from updater for again. value from shared prefs was " + temp;
-    }
-
-    public LinkedList<Location> getLocationUpdates() {
-        return new LinkedList<>(sLocationUpdates);
-    }
-
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
+        Log.d(LOGS_TAG, "hello there");
         if(!running) {
             running = true;
-            getFullUpdateHistory();
             new Thread(this).start();
         }
         return START_STICKY;
@@ -118,34 +125,18 @@ public class LocationUpdater extends Service
         // until onConnected() is called.
     }
 
-    private void updateSharedPreferences(Location location) {
-        JSONObject locationUpdate = new JSONObject();
-        String currentTimeMillis = String.valueOf(System.currentTimeMillis());
-        sLastLocation = location;
-        sLocationUpdates.add(location);
-        try {
-            locationUpdate.put("update_time", currentTimeMillis);
-            locationUpdate.put("latitude", location.getLatitude());
-            locationUpdate.put("longitude", location.getLongitude());
-        }
-        catch(JSONException e) {
-            Log.e("locationUpdating", "caught a json exception while adding a location update", e);
-        }
-        SharedPreferences.Editor editor = getSharedPreferences(LOCATION_UPDATES_TABLE, MODE_PRIVATE).edit();
-        editor.putString(currentTimeMillis, locationUpdate.toString());
-        editor.commit();
-    }
-
     @Override
     public void onConnected(Bundle connectionHint) {
         // Connected to Google Play services!
         // The good stuff goes here.
-        sLastLocation = LocationServices.FusedLocationApi.getLastLocation(
-                mGoogleApiClient);
+        try {
+            addToLocationUpdates(MinimalLocation.newMinimalLocation(LocationServices.FusedLocationApi.getLastLocation(
+                    mGoogleApiClient)));
+        }
+        catch(JSONException e) {
+            Log.e(LOGS_TAG, "error adding last logation to udpates list", e);
+        }
 
-        updateSharedPreferences(sLastLocation);
-
-        Assert.assertNotNull("location updates shouldn't be null here", sLastLocation);
         startLocationUpdates();
     }
 
@@ -154,52 +145,123 @@ public class LocationUpdater extends Service
         mGoogleApiClient.disconnect();
     }
 
+    public void clearLocationUpdates() {
+        getSharedPreferences(LOCATION_UPDATES_TABLE, MODE_PRIVATE).edit().clear().commit();
+    }
+
     @Override
     public void onLocationChanged(Location location) {
-        updateSharedPreferences(location);
-        sLastLocation = location;
-
+        try {
+            addToLocationUpdates(MinimalLocation.newMinimalLocation(location));
+        }
+        catch(JSONException e) {
+            clearLocationUpdates();
+            Log.e(LOGS_TAG, "json error in adding new location. just cleared updates list.", e);
+        }
         Intent locationUpdateBroadcast = new Intent();
         locationUpdateBroadcast.setAction(MainActivity.LocationUpdateReceiver.LOCATION_UPDATE);
         locationUpdateBroadcast.addCategory(Intent.CATEGORY_DEFAULT);
         sendBroadcast(locationUpdateBroadcast);
     }
 
-    public class LocationUpdatesErasedReceiver extends BroadcastReceiver {
-        public static final String LOCATION_UPDATES_ERASED = "com.example.alex.sometrial.LOCATION_UPDATES_ERASED";
+    public List<MinimalLocation> getUpdateHistoryFromLocation(String start) throws JSONException {
+        SharedPreferences store = getSharedPreferences(LOCATION_UPDATES_TABLE, MODE_PRIVATE);
 
-        @Override
-        public void onReceive(Context context, Intent intent) {
-            if(intent.getAction() == LOCATION_UPDATES_ERASED) {
-                SharedPreferences.Editor editor = getSharedPreferences(LOCATION_UPDATES_TABLE, MODE_PRIVATE).edit();
-                editor.clear();
-                editor.commit();
-                sLocationUpdates.clear();
-            }
+        // if start is the head of the list, and its empty, or start is pointing at the end of the list
+        // , then return an empty list.
+        if(start == String.valueOf(-1) || !store.contains(start) && start == LOCATION_DATA_HEAD) {
+            return new LinkedList<MinimalLocation>();
+        }
+        // if start isn't the head, or the end, but isn't contained in the list, then something's wrong.
+        else if(!store.contains(start) && start != LOCATION_DATA_HEAD)
+            Log.e(LOGS_TAG, "start not contained in updates list");
+
+        List<MinimalLocation> locationList = new LinkedList<MinimalLocation>();
+        String curKey = start;
+
+        // add all locations in the list
+        while (curKey != String.valueOf(-1)) {
+            if(!store.contains(curKey)) Log.e(LOGS_TAG, "store doesn't contain a key");
+            String jsonString = store.getString(curKey, null);
+            if(jsonString == null) Log.e(LOGS_TAG, "corrupt updates list. missing json object");
+            MinimalLocation temp = MinimalLocation.createFromJson(jsonString);
+            locationList.add(temp);
+            curKey = temp.getNextTimeString();
+        }
+
+        return locationList;
+    }
+
+    public List<MinimalLocation> getFullUpdateHistory() throws JSONException {
+        return getUpdateHistoryFromLocation(LOCATION_DATA_HEAD);
+    }
+
+    private void addToLocationUpdates(MinimalLocation location) throws JSONException {
+        // add to head of list is list is empty
+        SharedPreferences store = getSharedPreferences(LOCATION_UPDATES_TABLE, MODE_PRIVATE);
+
+        // if list is empty, add it to head. point head to item, point tail to head key.
+        if (!store.contains(LOCATION_DATA_HEAD)) {
+            location.setNextTime(-1);
+            SharedPreferences.Editor editor = store.edit();
+            editor.putString(LOCATION_DATA_HEAD, location.toJsonString());
+            editor.putString(LOCATION_DATA_TAIL, LOCATION_DATA_HEAD);
+            editor.commit();
+        }
+        // get last item, set its next key to new item. ground new item's next key. set tail key to key of new item.
+        else {
+            String keyOfLastUpdate = store.getString(LOCATION_DATA_TAIL, null);
+            if (!store.contains(keyOfLastUpdate)) Log.e(LOGS_TAG, "corrupted updates list. last update not found.");
+            MinimalLocation last = MinimalLocation.createFromJson(store.getString(keyOfLastUpdate, null));
+            if (last.getNextTime() != -1) Log.e(LOGS_TAG, "corrupted updates list. last node isn't grounded.");
+
+            last.setNextTime(location.millisUpdateTime);
+            location.setNextTime(-1);
+
+            SharedPreferences.Editor editor = store.edit();
+            editor.putString(keyOfLastUpdate, last.toJsonString());
+            editor.putString(last.getNextTimeString(), location.toJsonString());
+            editor.putString(LOCATION_DATA_TAIL, location.millisUpdateTimeString);
+            editor.commit();
         }
     }
 
-    private void getFullUpdateHistory() {
-        sLocationUpdates.clear();
-        Map<String, String> updateSet
-                = (Map<String, String>)getSharedPreferences(LOCATION_UPDATES_TABLE, MODE_PRIVATE).getAll();
-        TreeSet<String> updateTimes = new TreeSet(updateSet.keySet());
+    private JSONArray getLocationUpdatesAsJsonArray() throws JSONException {
+        JSONArray arr = new JSONArray();
+        List<MinimalLocation> updates = getFullUpdateHistory();
+        for(MinimalLocation temp : updates) {
+            arr.put(temp.toJsonString());
+        }
+        return arr;
+    }
+
+    public void sendLocationUpdates() {
+        String url = BASE_SERVER + "location_update_big";
+        RequestQueue queue = Volley.newRequestQueue(this);
+        JSONArray requestBody;
+
         try {
-            for (String singleUpdateTime : updateTimes) {
-                JSONObject update = (JSONObject) new JSONTokener(updateSet.get(singleUpdateTime)).nextValue();
-                double lat = Double.parseDouble(updateSet.get("latitude"));
-                double lng = Double.parseDouble(updateSet.get("longitude"));
-                Location temp = new Location();
-                temp.setLatitude(lat);
-                temp.setLongitude(lng);
-                sLocationUpdates.add(temp);
+            requestBody = getLocationUpdatesAsJsonArray();
+        }
+        catch(JSONException e) {
+            clearLocationUpdates();
+            Log.e(LOGS_TAG, "error in creating array of json updates. just cleared data", e);
+            return;
+        }
+
+        JsonArrayRequest jsonArrayRequest = new JsonArrayRequest(Request.Method.POST, url, requestBody,
+                new Response.Listener<JSONArray>() {
+                    @Override
+                    public void onResponse(JSONArray response) {
+                        stopSelf();
+                    }
+                }, new Response.ErrorListener() {
+            @Override
+            public void onErrorResponse(VolleyError error) {
+                Log.e("updateError", "server responded with a bad response: " + error.toString());
+                stopSelf();
             }
-        }
-        catch (JSONException e) {
-            Log.e("JSONerror", "error in parsing shared preferences json: " + e.toString());
-        }
-        catch(NumberFormatException e) {
-            Log.e("doubleParsing", "error in parsing shared preferences double: " + e.toString());
-        }
+        });
+        queue.add(jsonArrayRequest);
     }
 }

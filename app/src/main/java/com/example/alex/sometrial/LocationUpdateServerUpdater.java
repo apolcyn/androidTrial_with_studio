@@ -33,13 +33,18 @@ public class LocationUpdateServerUpdater extends Service {
     public int onStartCommand(Intent intent, int flag, int startId) {
         Map<String, String> locationUpdateMap
                 = (Map<String, String>)getSharedPreferences(LocationUpdater.LOCATION_UPDATES_TABLE, MODE_PRIVATE).getAll();
+        String curKey = LocationUpdater.LOCATION_DATA_HEAD;
+
+        while(curKey != String.valueOf(-1)) {
+            String jsonString = locationUpdateMap.
+        }
         JSONArray updateList = new JSONArray();
         if(locationUpdateMap.size() > 0) {
             for(String jsonUpdate : locationUpdateMap.values()) {
                 updateList.put(jsonUpdate);
             }
         }
-        updateLocationBig(updateList);
+        updateLocationBig();
 
         return START_STICKY_COMPATIBILITY;
     }

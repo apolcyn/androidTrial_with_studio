@@ -6,15 +6,13 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.ServiceConnection;
-import android.content.SharedPreferences;
-import android.location.Location;
 import android.os.AsyncTask;
 import android.os.Bundle;
 import android.os.IBinder;
 import android.support.v7.app.AppCompatActivity;
+import android.util.Log;
 import android.view.Menu;
 import android.view.MenuItem;
-import android.widget.TextView;
 
 import com.google.android.gms.maps.CameraUpdate;
 import com.google.android.gms.maps.CameraUpdateFactory;
@@ -25,9 +23,9 @@ import com.google.android.gms.maps.model.LatLng;
 import com.google.android.gms.maps.model.MarkerOptions;
 import com.google.android.gms.maps.model.PolylineOptions;
 
-import junit.framework.Assert;
+import org.json.JSONException;
 
-import java.util.LinkedList;
+import java.util.List;
 
 public class MainActivity extends AppCompatActivity implements OnMapReadyCallback {
     // TODO: figure out what this error code means.
@@ -36,13 +34,12 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     // TODO: figure out if should save this as in instance variable instead, and load and save it in onCreate and onSaveInstanceState
     // , see https://developers.google.com/android/guides/api-client#handle_connection_failure
     private static GoogleMap myMap;
+    private MinimalLocation lastPrintedLocation = null;
     private final int ZOOM_LEVEL = 18;
     private boolean mBound;
     private LocationUpdater mService;
-    private MyLinkedHashSet<Location> mDrawnLocationUpdates = new MyLinkedHashSet<Location>();
     private LocationUpdateReceiver mLocationUpdateReceiver;
     private boolean mapReadyForUpdates = false;
-    private Location mostRecentLocation;
 
     /** Defines callbacks for service binding, passed to bindService() */
     private ServiceConnection mConnection = new ServiceConnection() {
@@ -53,9 +50,6 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             // We've bound to LocalService, cast the IBinder and get LocalService instance
             LocationUpdater.LocalBinder binder = (LocationUpdater.LocalBinder) service;
             mService = binder.getService();
-            String msg = mService.getHello();
-
-            ((TextView)findViewById(R.id.myLocationText)).setText(msg);
             mBound = true;
         }
 
@@ -72,8 +66,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         setupSearchBox();
         myMap = null;
         mapReadyForUpdates = false;
-        mDrawnLocationUpdates.clear();
-        mostRecentLocation = null;
+        lastPrintedLocation = null;
         setupMap();
     }
 
@@ -143,14 +136,23 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             return true;
         }
         else if(id == R.id.send_location_data) {
-            Intent intent = new Intent(this, LocationUpdateServerUpdater.class);
-            startService(intent);
+            if(mBound) {
+                new Thread(new Runnable() {
+                    public void run() {
+                        mService.sendLocationUpdates();
+                    }
+                }).start();
+            }
             return true;
         }
         else if(id == R.id.erase_location_data) {
-            SharedPreferences.Editor editor = getSharedPreferences(LocationUpdater.LOCATION_UPDATES_TABLE, MODE_PRIVATE).edit();
-            editor.clear();
-            editor.commit();
+            if(mBound) {
+                new Thread(new Runnable() {
+                    public void run() {
+                        clearMapAndLocations();
+                    }
+                }).start();
+            }
             return true;
         }
 
@@ -166,8 +168,9 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     public void onMapReady(GoogleMap map) {
         myMap = map;
 
-        new UpdateLocationList().executeOnExecutor(AsyncTask.SERIAL_EXECUTOR
-                , mDrawnLocationUpdates.getLinkedList());
+        if(mBound) {
+            new UpdateLocationList().executeOnExecutor(AsyncTask.SERIAL_EXECUTOR);
+        }
 
         mapReadyForUpdates = true;
         /*getDirectionsDriver(new LatLng(mLastLocation.getLatitude(), mLastLocation.getLongitude()),
@@ -253,7 +256,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     }*/
 
     private void addDestinationMarker(LatLng other) {
-        myMap.addMarker(new MarkerOptions().position(other).title("destination"));
+        myMap.addMarker(new MarkerOptions().position(other).title("start"));
     }
 
     private void connectLatLng(LatLng start, LatLng end) {
@@ -263,21 +266,30 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         myMap.addPolyline(polylineOptions);
     }
 
-    private void addLocationToLine(Location newLocation) {
+    private void clearMapAndLocations() {
+        if(myMap != null) {
+            myMap.clear();
+        }
+        if(mService != null) {
+            mService.clearLocationUpdates();
+        }
+    }
+
+    private void addLocationToLine(MinimalLocation newLocation) {
         if(newLocation == null) {
             throw new IllegalArgumentException("new location shouldn't be null");
         }
-        if(mostRecentLocation == null) {
+        if(lastPrintedLocation == null) {
             addDestinationMarker(new LatLng(newLocation.getLatitude(), newLocation.getLongitude()));
-            mostRecentLocation = newLocation;
+            lastPrintedLocation = newLocation;
         }
         else {
-            connectLatLng(new LatLng(mostRecentLocation.getLatitude(), mostRecentLocation.getLongitude())
+            connectLatLng(new LatLng(lastPrintedLocation.getLatitude(), lastPrintedLocation.getLongitude())
                     , new LatLng(newLocation.getLatitude(), newLocation.getLongitude()));
-            mostRecentLocation = newLocation;
+            lastPrintedLocation = newLocation;
         }
         CameraUpdate cameraUpdate = CameraUpdateFactory.newLatLngZoom(
-                new LatLng(mostRecentLocation.getLatitude(), mostRecentLocation.getLongitude()), ZOOM_LEVEL);
+                new LatLng(lastPrintedLocation.getLatitude(), lastPrintedLocation.getLongitude()), ZOOM_LEVEL);
         myMap.moveCamera(cameraUpdate);
     }
 
@@ -287,8 +299,8 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         @Override
         public void onReceive(Context context, Intent intent) {
             if(intent.getAction() == LOCATION_UPDATE) {
-                if(mapReadyForUpdates) {
-                    new UpdateLocationList().executeOnExecutor(AsyncTask.SERIAL_EXECUTOR, mService.getLocationUpdates());
+                if(mapReadyForUpdates && mBound) {
+                    new UpdateLocationList().executeOnExecutor(AsyncTask.SERIAL_EXECUTOR);
                 }
             }
         }
@@ -305,36 +317,25 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         unregisterReceiver(mLocationUpdateReceiver);
     }
 
-    public class UpdateLocationList extends AsyncTask<LinkedList<Location>, Void, LinkedList<Location>> {
+    public class UpdateLocationList extends AsyncTask<Void, Void, List<MinimalLocation>> {
 
-        protected synchronized LinkedList<Location> doInBackground(LinkedList<Location>... locationUpdates) {
-            Assert.assertEquals(1, locationUpdates.length);
-            int startOfNewUpdates = 0;
+        protected synchronized List<MinimalLocation> doInBackground(Void... params) {
+            String startOfNewUpdates = null;
+            List<MinimalLocation> output = null;
 
-            LinkedList<Location> list = locationUpdates[0];
-
-            for(Location temp : list) {
-                if(!mDrawnLocationUpdates.contains(temp))
-                    break;
-                startOfNewUpdates++;
+            try {
+                output = mService.getFullUpdateHistory();
+            }
+            catch (JSONException e) {
+                clearMapAndLocations();
+                Log.e(LocationUpdater.LOGS_TAG, "json exception reading json. just cleared updates list", e);
             }
 
-            LinkedList<Location> updates = null;
-
-            if(list.size() > 0)
-                updates = new LinkedList<>(list.subList(startOfNewUpdates, list.size()));
-            else
-                updates = new LinkedList<Location>();
-
-            for(Location temp : updates) {
-                mDrawnLocationUpdates.add(temp);
-            }
-
-            return updates;
+            return output;
         }
 
-        protected void onPostExecute(LinkedList<Location> newLocations) {
-            for(Location temp : newLocations) {
+        protected void onPostExecute(List<MinimalLocation> newLocations) {
+            for(MinimalLocation temp : newLocations) {
                 addLocationToLine(temp);
             }
         }
