@@ -4,24 +4,6 @@
     tools:context=".MainActivity"
     android:orientation="vertical"
     android:theme="@style/Theme.AppCompat.Light">
-    
-    <TextView android:text="@string/hello_world" android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:id="@+id/myLocationText" />
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content">
-        android:orientation="horizontal">
-        <EditText
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:id="@+id/map_search"
-            android:inputType="text"
-            android:imeOptions="actionSearch"/>
-        <TextView android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:id="@+id/destinationInfo" />
-    </LinearLayout>
     <fragment android:name="com.google.android.gms.maps.MapFragment"
         xmlns:map="http://schemas.android.com/apk/res-auto"
         android:id="@+id/map"

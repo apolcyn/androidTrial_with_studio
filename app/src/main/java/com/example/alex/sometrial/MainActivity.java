@@ -1,10 +1,8 @@
 package com.example.alex.sometrial;
 
-import android.content.BroadcastReceiver;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
-import android.content.IntentFilter;
 import android.content.ServiceConnection;
 import android.os.AsyncTask;
 import android.os.Bundle;
@@ -23,8 +21,7 @@ import com.google.android.gms.maps.model.LatLng;
 import com.google.android.gms.maps.model.MarkerOptions;
 import com.google.android.gms.maps.model.PolylineOptions;
 
-import org.json.JSONException;
-
+import java.util.LinkedList;
 import java.util.List;
 
 public class MainActivity extends AppCompatActivity implements OnMapReadyCallback {
@@ -38,7 +35,6 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     private final int ZOOM_LEVEL = 18;
     private boolean mBound;
     private LocationUpdater mService;
-    private LocationUpdateReceiver mLocationUpdateReceiver;
     private boolean mapReadyForUpdates = false;
 
     /** Defines callbacks for service binding, passed to bindService() */
@@ -51,6 +47,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             LocationUpdater.LocalBinder binder = (LocationUpdater.LocalBinder) service;
             mService = binder.getService();
             mBound = true;
+            new LocationDisplayer().execute();
         }
 
         @Override
@@ -63,7 +60,6 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
-        setupSearchBox();
         myMap = null;
         mapReadyForUpdates = false;
         lastPrintedLocation = null;
@@ -73,38 +69,16 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     @Override
     protected void onResume() {
         super.onResume();
-        registerLocationUpdateReceiver();
     }
 
     @Override
     protected void onPause() {
         super.onPause();
-        unregisterLocationUpdateReceiver();
-    }
-
-    private void setupSearchBox() {
-        /*final EditText editText = (EditText) findViewById(R.id.map_search);
-        editText.setOnEditorActionListener(new TextView.OnEditorActionListener() {
-            @Override
-            public boolean onEditorAction(TextView v, int actionId, KeyEvent event) {
-                boolean handled = false;
-                if (actionId == EditorInfo.IME_ACTION_SEARCH) {
-                    getDirectionsDriver(new LatLng(mLastLocation.getLatitude(), mLastLocation.getLongitude())
-                            , editText.getText().toString());
-                    handled = true;
-                    ((TextView) findViewById(R.id.destinationInfo)).setText("Searching for: " + editText.getText().toString());
-                }
-                return handled;
-            }
-        });*/
     }
 
     @Override
     protected void onStart() {
         super.onStart();
-
-        Intent intent = new Intent(this, LocationUpdater.class);
-        bindService(intent, mConnection, Context.BIND_AUTO_CREATE);
     }
 
     @Override
@@ -137,26 +111,82 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         }
         else if(id == R.id.send_location_data) {
             if(mBound) {
-                new Thread(new Runnable() {
-                    public void run() {
-                        mService.sendLocationUpdates();
-                    }
-                }).start();
+                new LocationSender().execute();
             }
             return true;
         }
         else if(id == R.id.erase_location_data) {
             if(mBound) {
-                new Thread(new Runnable() {
-                    public void run() {
-                        clearMapAndLocations();
-                    }
-                }).start();
+                new LocationDataEraser().execute();
             }
             return true;
         }
+        else if(id == R.id.show_location_data) {
+            if(mBound) {
+                new LocationDisplayer().execute();
+            }
+        }
 
         return super.onOptionsItemSelected(item);
+    }
+
+    private class LocationDataEraser extends AsyncTask<Void, Void, Void> {
+        @Override
+        protected Void doInBackground(Void... params) {
+            if(!mBound) {
+                Log.e(LocationUpdater.LOGS_TAG, "couldn't erase location updates because not bound to service");
+            }
+            else {
+                mService.clearLocationUpdates();
+            }
+            return null;
+        }
+
+        @Override
+        protected void onPostExecute(Void param) {
+            cleanMap();
+        }
+    }
+
+    private class LocationSender extends AsyncTask<Void, Void, Void> {
+        @Override
+        protected Void doInBackground(Void... params) {
+            if(!mBound) {
+                Log.e(LocationUpdater.LOGS_TAG, "couldn't send location updates because not bound to service");
+            }
+            else {
+                mService.sendLocationUpdates();
+            }
+            return null;
+        }
+
+        @Override
+        protected void onPostExecute(Void param) {
+            cleanMap();
+        }
+    }
+
+    private class LocationDisplayer extends AsyncTask<Void, Void, List<MinimalLocation>> {
+        @Override
+        protected List<MinimalLocation> doInBackground(Void... params) {
+            List<MinimalLocation> output;
+
+            if(!mBound) {
+                Log.e(LocationUpdater.LOGS_TAG, "cou;dn't get location upates because not bound to service");
+                return new LinkedList<>();
+            }
+            else {
+                return mService.getFullUpdateHistory();
+            }
+        }
+
+        @Override
+        protected void onPostExecute(List<MinimalLocation> updates) {
+            cleanMap();
+            for(MinimalLocation temp: updates) {
+                addLocationToLine(temp);
+            }
+        }
     }
 
     private void setupMap() {
@@ -167,93 +197,9 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     @Override
     public void onMapReady(GoogleMap map) {
         myMap = map;
-
-        if(mBound) {
-            new UpdateLocationList().executeOnExecutor(AsyncTask.SERIAL_EXECUTOR);
-        }
-
-        mapReadyForUpdates = true;
-        /*getDirectionsDriver(new LatLng(mLastLocation.getLatitude(), mLastLocation.getLongitude()),
-                new LatLng(35.300063, -120.658606));*/
+        Intent intent = new Intent(this, LocationUpdater.class);
+        bindService(intent, mConnection, Context.BIND_AUTO_CREATE);
     }
-
-   /* private void getDirectionsDriver(LatLng start, String buildingNumber) {
-        String url = BASE_SERVER + "/directions?start_latitude=" + start.latitude
-                + "&start_longitude=" + start.longitude
-                + "&building_number=" + buildingNumber;
-        getDirections(url);
-    }*/
-
-   /* private void updateLocationTracker() {
-        String url = BASE_SERVER + "/location_update?latitude=" + mLastLocation.getLatitude()
-                + "&longitude=" + mLastLocation.getLongitude()
-                + "&millis_time_update=" + System.currentTimeMillis();
-        if(locationTrackerId != null) {
-            url += "&source_id=" + locationTrackerId;
-        }
-        RequestQueue queue = Volley.newRequestQueue(this);
-
-        JsonObjectRequest jsonObjectRequest = new JsonObjectRequest(url,
-                new Response.Listener<JSONObject>() {
-                    @Override
-                    public void onResponse(JSONObject response) {
-                        try {
-                            locationTrackerId = Long.parseLong(response.get("source_id").toString());
-                        }
-                        catch(JSONException e) {
-                            throw new RuntimeException("error parsing JSON");
-                        }
-                    }
-                }, new Response.ErrorListener() {
-
-                    @Override
-                    public void onErrorResponse(VolleyError error) {
-                        ((TextView)findViewById(R.id.myLocationText)).setText("an error occurred posting a location update");
-                    }
-                });
-        queue.add(jsonObjectRequest);
-    }*/
-
-   /* private void getDirectionsDriver(LatLng start, LatLng dest) {
-        String url = BASE_SERVER + "/directions?start_latitude=" + start.latitude
-                + "&start_longitude=" + start.longitude
-                + "&dest_latitude=" + dest.latitude
-                + "&dest_longitude=" + dest.longitude;
-        getDirections(url);
-    }*/
-
-  /*  private void getDirections(String url) {
-        RequestQueue queue = Volley.newRequestQueue(this);
-
-        // Request a string response from the provided URL.
-        JsonArrayRequest jsonArrayRequest = new JsonArrayRequest(url,
-                new Response.Listener<JSONArray>() {
-                    @Override
-                    public void onResponse(JSONArray response) {
-                        // Display the first 500 characters of the response string.
-                        for(int i = 0; i < response.length() - 1; i++) {
-                            try {
-                                JSONObject first = (JSONObject) response.get(i);
-                                JSONObject second = (JSONObject) response.get(i + 1);
-                                connectLatLng(new LatLng(new Double(first.get("lat").toString())
-                                        , new Double(first.get("lng").toString()))
-                                        , new LatLng(new Double(second.get("lat").toString())
-                                        , new Double(second.get("lng").toString())));
-                            }
-                            catch (JSONException e) {
-                                throw new RuntimeException("there was an error paring json: " + e.getMessage());
-                            }
-                        }
-                    }
-                }, new Response.ErrorListener() {
-            @Override
-            public void onErrorResponse(VolleyError error) {
-                ((TextView)findViewById(R.id.myLocationText)).setText("An error occurred in connecting. message: " + error.getMessage());
-            }
-        });
-// Add the request to the RequestQueue.
-        queue.add(jsonArrayRequest);
-    }*/
 
     private void addDestinationMarker(LatLng other) {
         myMap.addMarker(new MarkerOptions().position(other).title("start"));
@@ -266,12 +212,10 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         myMap.addPolyline(polylineOptions);
     }
 
-    private void clearMapAndLocations() {
+    private void cleanMap() {
         if(myMap != null) {
+            lastPrintedLocation = null;
             myMap.clear();
-        }
-        if(mService != null) {
-            mService.clearLocationUpdates();
         }
     }
 
@@ -291,54 +235,5 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         CameraUpdate cameraUpdate = CameraUpdateFactory.newLatLngZoom(
                 new LatLng(lastPrintedLocation.getLatitude(), lastPrintedLocation.getLongitude()), ZOOM_LEVEL);
         myMap.moveCamera(cameraUpdate);
-    }
-
-    public class LocationUpdateReceiver extends BroadcastReceiver {
-        public static final String LOCATION_UPDATE = "com.example.alex.sometrial.LOCATION_UPDATE";
-
-        @Override
-        public void onReceive(Context context, Intent intent) {
-            if(intent.getAction() == LOCATION_UPDATE) {
-                if(mapReadyForUpdates && mBound) {
-                    new UpdateLocationList().executeOnExecutor(AsyncTask.SERIAL_EXECUTOR);
-                }
-            }
-        }
-    }
-
-    private void registerLocationUpdateReceiver() {
-        IntentFilter intentFilter = new IntentFilter(LocationUpdateReceiver.LOCATION_UPDATE);
-        intentFilter.addCategory(Intent.CATEGORY_DEFAULT);
-        mLocationUpdateReceiver = new LocationUpdateReceiver();
-        registerReceiver(mLocationUpdateReceiver, intentFilter);
-    }
-
-    private void unregisterLocationUpdateReceiver() {
-        unregisterReceiver(mLocationUpdateReceiver);
-    }
-
-    public class UpdateLocationList extends AsyncTask<Void, Void, List<MinimalLocation>> {
-
-        protected synchronized List<MinimalLocation> doInBackground(Void... params) {
-            String startOfNewUpdates = null;
-            List<MinimalLocation> output = null;
-
-            try {
-                output = mService.getFullUpdateHistory();
-            }
-            catch (JSONException e) {
-                clearMapAndLocations();
-                Log.e(LocationUpdater.LOGS_TAG, "json exception reading json. just cleared updates list", e);
-            }
-
-            return output;
-        }
-
-        protected void onPostExecute(List<MinimalLocation> newLocations) {
-            for(MinimalLocation temp : newLocations) {
-                addLocationToLine(temp);
-            }
-        }
-
     }
 }

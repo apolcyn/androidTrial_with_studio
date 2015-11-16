@@ -7,4 +7,6 @@
         app:showAsAction="ifRoom" />
     <item android:id="@+id/erase_location_data" android:title="Erase my locations"
         app:showAsAction="ifRoom" />
+    <item android:id="@+id/show_location_data" android:title="Show my collected locations"
+        app:showAsAction="ifRoom"/>
 </menu>

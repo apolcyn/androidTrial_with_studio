@@ -2,19 +2,12 @@ package com.example.alex.sometrial;
 
 import android.app.Service;
 import android.content.Intent;
-import android.content.SharedPreferences;
 import android.location.Location;
 import android.os.Binder;
 import android.os.Bundle;
 import android.os.IBinder;
 import android.util.Log;
 
-import com.android.volley.Request;
-import com.android.volley.RequestQueue;
-import com.android.volley.Response;
-import com.android.volley.VolleyError;
-import com.android.volley.toolbox.JsonArrayRequest;
-import com.android.volley.toolbox.Volley;
 import com.google.android.gms.common.ConnectionResult;
 import com.google.android.gms.common.api.GoogleApiClient;
 import com.google.android.gms.common.api.GoogleApiClient.ConnectionCallbacks;
@@ -28,8 +21,21 @@ import junit.framework.Assert;
 import org.json.JSONArray;
 import org.json.JSONException;
 
+import java.io.BufferedInputStream;
+import java.io.BufferedOutputStream;
+import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.net.HttpURLConnection;
+import java.net.MalformedURLException;
+import java.net.URL;
+import java.util.InputMismatchException;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.NoSuchElementException;
+import java.util.Scanner;
 
 
 /*
@@ -44,6 +50,9 @@ Each JSON object contains a field that is the key of the next time in shared pre
 If they are at the end of the list, then their next key is "-1".
  */
 
+/* Location updates structured in: (space delimited attributes, newline delimited objects)
+latitude longitude update-time
+*/
 public class LocationUpdater extends Service
         implements ConnectionCallbacks, OnConnectionFailedListener, LocationListener, Runnable {
     private boolean running;
@@ -52,12 +61,13 @@ public class LocationUpdater extends Service
     public static final String LOCATION_UPDATES_TABLE = "location_update_preferences_table";
     public static final String LOGS_TAG = "my_logs";
     private static final String BASE_SERVER = "http://darkroast-1085.appspot.com/";
-
+    private static final String LOCATION_UPDATES_ENDPOINT = BASE_SERVER + "location_update_big";
 
     // key for the first item in the list. points to nothing if list is empty.
     public static final String LOCATION_DATA_HEAD = "location_data_shared_pref_head";
     // key for the last item in the list. points to nothing if list is empty.
     private static String LOCATION_DATA_TAIL = "location_data_shared_pref_tail";
+    private FileOutputStream updatesWriter;
 
     // Binder given to clients
     private final IBinder mBinder = new LocalBinder();
@@ -69,9 +79,25 @@ public class LocationUpdater extends Service
         }
     }
 
+    private void ensureUpdateClientsReady() {
+        try {
+            if (updatesWriter == null)
+                updatesWriter = openFileOutput(LOCATION_UPDATES_TABLE, MODE_PRIVATE);
+        } catch (IOException e) {
+            Log.e(LOGS_TAG, "couldn't open file writer to write to location updates file", e);
+        }
+    }
+
+    private void handleCorruptFile() {
+        clearLocationUpdates();
+        ensureUpdateClientsReady();
+    }
+
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         Log.d(LOGS_TAG, "hello there");
+        ensureUpdateClientsReady();
+
         if(!running) {
             running = true;
             new Thread(this).start();
@@ -81,19 +107,11 @@ public class LocationUpdater extends Service
 
     @Override
     public IBinder onBind(Intent intent) {
+        ensureUpdateClientsReady();
         return mBinder;
     }
 
-   /* @Override
-    public int onStartCommand(Intent intent, int flags, int startId) {
-        if(running)
-            return;
-
-        running = true;
-
-        run();
-    }*/
-
+    /* Start polling for location updates" */
     public void run() {
         mGoogleApiClient = new GoogleApiClient.Builder(this)
                 .addConnectionCallbacks(this)
@@ -146,7 +164,22 @@ public class LocationUpdater extends Service
     }
 
     public void clearLocationUpdates() {
-        getSharedPreferences(LOCATION_UPDATES_TABLE, MODE_PRIVATE).edit().clear().commit();
+        getFileStreamPath(LOCATION_UPDATES_TABLE).delete();
+        try {
+            if(updatesWriter != null) {
+                updatesWriter.close();
+            }
+        }
+        catch(IOException e) {
+            Log.e(LOGS_TAG, "error closing updates writer", e);
+            updatesWriter = null;
+        }
+        try {
+            updatesWriter = openFileOutput(LOCATION_UPDATES_TABLE, MODE_PRIVATE);
+        }
+        catch(FileNotFoundException e) {
+            Log.e(LOGS_TAG, "couldn't open updates file", e);
+        }
     }
 
     @Override
@@ -158,71 +191,62 @@ public class LocationUpdater extends Service
             clearLocationUpdates();
             Log.e(LOGS_TAG, "json error in adding new location. just cleared updates list.", e);
         }
-        Intent locationUpdateBroadcast = new Intent();
-        locationUpdateBroadcast.setAction(MainActivity.LocationUpdateReceiver.LOCATION_UPDATE);
-        locationUpdateBroadcast.addCategory(Intent.CATEGORY_DEFAULT);
-        sendBroadcast(locationUpdateBroadcast);
     }
 
-    public List<MinimalLocation> getUpdateHistoryFromLocation(String start) throws JSONException {
-        SharedPreferences store = getSharedPreferences(LOCATION_UPDATES_TABLE, MODE_PRIVATE);
+    public List<MinimalLocation> getFullUpdateHistory() {
+        List<MinimalLocation> output = new LinkedList<MinimalLocation>();
+        Scanner sc;
 
-        // if start is the head of the list, and its empty, or start is pointing at the end of the list
-        // , then return an empty list.
-        if(start == String.valueOf(-1) || !store.contains(start) && start == LOCATION_DATA_HEAD) {
-            return new LinkedList<MinimalLocation>();
+        try {
+            BufferedInputStream bufferedInputStream = new BufferedInputStream(openFileInput(LOCATION_UPDATES_TABLE));
+            sc = new Scanner(bufferedInputStream);
         }
-        // if start isn't the head, or the end, but isn't contained in the list, then something's wrong.
-        else if(!store.contains(start) && start != LOCATION_DATA_HEAD)
-            Log.e(LOGS_TAG, "start not contained in updates list");
-
-        List<MinimalLocation> locationList = new LinkedList<MinimalLocation>();
-        String curKey = start;
-
-        // add all locations in the list
-        while (curKey != String.valueOf(-1)) {
-            if(!store.contains(curKey)) Log.e(LOGS_TAG, "store doesn't contain a key");
-            String jsonString = store.getString(curKey, null);
-            if(jsonString == null) Log.e(LOGS_TAG, "corrupt updates list. missing json object");
-            MinimalLocation temp = MinimalLocation.createFromJson(jsonString);
-            locationList.add(temp);
-            curKey = temp.getNextTimeString();
+        catch(IOException e) {
+            Log.e(LOGS_TAG, "couldn't read upates because couldn't get a reader");
+            return output;
         }
 
-        return locationList;
-    }
+        while(sc.hasNext()) {
+            double lat, lng;
+            long time;
+            try {
+                lat = sc.nextDouble();
+                lng = sc.nextDouble();
+                time = sc.nextLong();
+            }
+            catch(InputMismatchException e) {
+                Log.e(LOGS_TAG, "input mismatch reading updates", e);
+                handleCorruptFile();
+                return output;
+            }
+            catch(NoSuchElementException e) {
+                Log.e(LOGS_TAG, "item not found when reading updates", e);
+                handleCorruptFile();
+                return output;
+            }
 
-    public List<MinimalLocation> getFullUpdateHistory() throws JSONException {
-        return getUpdateHistoryFromLocation(LOCATION_DATA_HEAD);
+            output.add(MinimalLocation.newMinimalLocation(lat, lng, time));
+        }
+        sc.close();
+
+        return output;
     }
 
     private void addToLocationUpdates(MinimalLocation location) throws JSONException {
-        // add to head of list is list is empty
-        SharedPreferences store = getSharedPreferences(LOCATION_UPDATES_TABLE, MODE_PRIVATE);
-
-        // if list is empty, add it to head. point head to item, point tail to head key.
-        if (!store.contains(LOCATION_DATA_HEAD)) {
-            location.setNextTime(-1);
-            SharedPreferences.Editor editor = store.edit();
-            editor.putString(LOCATION_DATA_HEAD, location.toJsonString());
-            editor.putString(LOCATION_DATA_TAIL, LOCATION_DATA_HEAD);
-            editor.commit();
+        if(updatesWriter == null) {
+            Log.e(LOGS_TAG, "couldn't add a location update because couldn't get a writer");
+            return;
         }
-        // get last item, set its next key to new item. ground new item's next key. set tail key to key of new item.
-        else {
-            String keyOfLastUpdate = store.getString(LOCATION_DATA_TAIL, null);
-            if (!store.contains(keyOfLastUpdate)) Log.e(LOGS_TAG, "corrupted updates list. last update not found.");
-            MinimalLocation last = MinimalLocation.createFromJson(store.getString(keyOfLastUpdate, null));
-            if (last.getNextTime() != -1) Log.e(LOGS_TAG, "corrupted updates list. last node isn't grounded.");
-
-            last.setNextTime(location.millisUpdateTime);
-            location.setNextTime(-1);
-
-            SharedPreferences.Editor editor = store.edit();
-            editor.putString(keyOfLastUpdate, last.toJsonString());
-            editor.putString(last.getNextTimeString(), location.toJsonString());
-            editor.putString(LOCATION_DATA_TAIL, location.millisUpdateTimeString);
-            editor.commit();
+        try {
+            StringBuilder builder = new StringBuilder();
+            builder.append(location.getLatitude() + " ");
+            builder.append(location.getLongitude() + " ");
+            builder.append(location.millisUpdateTimeString + "\r\n");
+            updatesWriter.write(builder.toString().getBytes());
+            updatesWriter.flush();
+        }
+        catch(IOException e) {
+            Log.e(LOGS_TAG, "failed to write to updates file", e);
         }
     }
 
@@ -236,32 +260,49 @@ public class LocationUpdater extends Service
     }
 
     public void sendLocationUpdates() {
-        String url = BASE_SERVER + "location_update_big";
-        RequestQueue queue = Volley.newRequestQueue(this);
-        JSONArray requestBody;
-
+        URL url;
         try {
-            requestBody = getLocationUpdatesAsJsonArray();
+            url = new URL(LOCATION_UPDATES_ENDPOINT);
         }
-        catch(JSONException e) {
-            clearLocationUpdates();
-            Log.e(LOGS_TAG, "error in creating array of json updates. just cleared data", e);
+        catch(MalformedURLException e) {
+            Log.e(LOGS_TAG, "couldn't upload file because endpoint url is malformed", e);
+            return;
+
+        }
+        HttpURLConnection urlConnection;
+        try {
+            urlConnection = (HttpURLConnection) url.openConnection();
+        }
+        catch (IOException e) {
+            Log.e(LOGS_TAG, "coulnd't update locations because couldn't open connection to server", e);
             return;
         }
 
-        JsonArrayRequest jsonArrayRequest = new JsonArrayRequest(Request.Method.POST, url, requestBody,
-                new Response.Listener<JSONArray>() {
-                    @Override
-                    public void onResponse(JSONArray response) {
-                        stopSelf();
-                    }
-                }, new Response.ErrorListener() {
-            @Override
-            public void onErrorResponse(VolleyError error) {
-                Log.e("updateError", "server responded with a bad response: " + error.toString());
-                stopSelf();
+        long fileLengthLong = getFileStreamPath(LOCATION_UPDATES_TABLE).length();
+        if(fileLengthLong > Integer.MAX_VALUE) {
+            Log.e(LOGS_TAG, "file is too big. only going to be able to upload first " + Integer.MAX_VALUE + " bytes");
+        }
+        int fileLength = (int)fileLengthLong;
+
+        try{
+            urlConnection.setDoOutput(true);
+            urlConnection.setFixedLengthStreamingMode(fileLength);
+            OutputStream fileUploadStream = new BufferedOutputStream(urlConnection.getOutputStream());
+            InputStream fileReadingStream = new BufferedInputStream(openFileInput(LOCATION_UPDATES_TABLE));
+
+            int cur, numWritten = 0; // not sure if possible, but if file grows while reading, don't include the new stuff.
+            while((cur = fileReadingStream.read()) != -1 && numWritten++ < fileLength) {
+                fileUploadStream.write((char)cur);
             }
-        });
-        queue.add(jsonArrayRequest);
+            fileReadingStream.close();
+            fileUploadStream.close();
+        }
+        catch(IOException e) {
+            Log.e(LOGS_TAG, "error occured in uploading location updates", e);
+        }
+        finally {
+            urlConnection.disconnect();
+        }
+
     }
 }

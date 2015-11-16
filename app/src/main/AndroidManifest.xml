@@ -29,17 +29,7 @@
             android:name=".LocationUpdater"
             android:enabled="true"
             android:exported="true" />
-        <service
-            android:name=".LocationUpdateServerUpdater"
-            android:enabled="true"
-            android:exported="true" >
-        </service>
 
-        <receiver
-            android:name=".StopCapturingUpdatesReceiver"
-            android:enabled="true"
-            android:exported="true" >
-        </receiver>
     </application>
 
 </manifest>
