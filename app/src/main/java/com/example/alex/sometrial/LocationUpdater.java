@@ -18,7 +18,6 @@ import com.google.android.gms.location.LocationServices;
 
 import junit.framework.Assert;
 
-import org.json.JSONArray;
 import org.json.JSONException;
 
 import java.io.BufferedInputStream;
@@ -62,11 +61,6 @@ public class LocationUpdater extends Service
     public static final String LOGS_TAG = "my_logs";
     private static final String BASE_SERVER = "http://darkroast-1085.appspot.com/";
     private static final String LOCATION_UPDATES_ENDPOINT = BASE_SERVER + "location_update_big";
-
-    // key for the first item in the list. points to nothing if list is empty.
-    public static final String LOCATION_DATA_HEAD = "location_data_shared_pref_head";
-    // key for the last item in the list. points to nothing if list is empty.
-    private static String LOCATION_DATA_TAIL = "location_data_shared_pref_tail";
     private FileOutputStream updatesWriter;
 
     // Binder given to clients
@@ -250,15 +244,6 @@ public class LocationUpdater extends Service
         }
     }
 
-    private JSONArray getLocationUpdatesAsJsonArray() throws JSONException {
-        JSONArray arr = new JSONArray();
-        List<MinimalLocation> updates = getFullUpdateHistory();
-        for(MinimalLocation temp : updates) {
-            arr.put(temp.toJsonString());
-        }
-        return arr;
-    }
-
     public void sendLocationUpdates() {
         URL url;
         try {
@@ -303,6 +288,5 @@ public class LocationUpdater extends Service
         finally {
             urlConnection.disconnect();
         }
-
     }
 }

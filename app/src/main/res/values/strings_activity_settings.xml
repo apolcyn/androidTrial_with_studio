@@ -1,0 +1,24 @@
+<resources>
+    <string name="pref_header_general">General</string>
+    <string name="pref_title_set_max_update_file_length">Set location-update storage capacity</string>
+    <string name="pref_summary_set_max_update_file_length">Choose the maximum amount of location data that can be stored or sent to the servers
+    at any given time (in kilobytes). Currently set to:</string>
+    <string-array name="pref_max_update_file_length_titles">
+        <item>0 Kb</item>
+        <item>1 Kb</item>
+        <item>2 Kb</item>
+        <item>4 Kb</item>
+        <item>8 Kb</item>
+        <item>16 Kb</item>
+    </string-array>
+    <string-array name="pref_max_update_file_length_values">
+        <item>0</item>
+        <item>1000</item>
+        <item>2000</item>
+        <item>4000</item>
+        <item>8000</item>
+        <item>1600</item>
+    </string-array>
+    <string name="title_activity_settings">Settings</string>
+    <string name="max_update_file_length_pref_key">max_update_file_length_pref_key</string>
+</resources>

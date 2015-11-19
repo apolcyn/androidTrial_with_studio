@@ -106,10 +106,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         int id = item.getItemId();
 
         //noinspection SimplifiableIfStatement
-        if (id == R.id.action_settings) {
-            return true;
-        }
-        else if(id == R.id.send_location_data) {
+        if(id == R.id.send_location_data) {
             if(mBound) {
                 new LocationSender().execute();
             }
@@ -125,6 +122,10 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             if(mBound) {
                 new LocationDisplayer().execute();
             }
+        }
+        else if(id == R.id.launch_settings) {
+            Intent intent = new Intent(this, SettingsActivity.class);
+            startActivity(intent);
         }
 
         return super.onOptionsItemSelected(item);
