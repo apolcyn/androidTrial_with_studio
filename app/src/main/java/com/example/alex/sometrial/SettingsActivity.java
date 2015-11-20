@@ -123,7 +123,7 @@ public class SettingsActivity extends PreferenceActivity {
             // guidelines.
             // bindPreferenceSummaryToValue(findPreference("example_text"));
             // bindPreferenceSummaryToValue(findPreference("example_list"));
-            bindPreferenceSummaryToValue(findPreference(getResources().getText(R.string.max_update_file_length_pref_key)));
+            bindPreferenceSummaryToValue(findPreference(getResources().getString(R.string.max_update_file_length_pref_key)));
         }
     }
 }

@@ -1,11 +1,14 @@
 package com.example.alex.sometrial;
 
+import android.app.Application;
 import android.app.Service;
 import android.content.Intent;
 import android.location.Location;
 import android.os.Binder;
 import android.os.Bundle;
 import android.os.IBinder;
+import android.preference.Preference;
+import android.preference.PreferenceManager;
 import android.util.Log;
 
 import com.google.android.gms.common.ConnectionResult;
@@ -62,7 +65,9 @@ public class LocationUpdater extends Service
     private static final String BASE_SERVER = "http://darkroast-1085.appspot.com/";
     private static final String LOCATION_UPDATES_ENDPOINT = BASE_SERVER + "location_update_big";
     private FileOutputStream updatesWriter;
-
+    private int mMaxUpdateFileLength
+            = PreferenceManager.findPreference(getResources().getString(R.string.max_update_file_length_pref_key));
+    
     // Binder given to clients
     private final IBinder mBinder = new LocalBinder();
     private GoogleApiClient mGoogleApiClient;
@@ -288,5 +293,22 @@ public class LocationUpdater extends Service
         finally {
             urlConnection.disconnect();
         }
+    }
+
+    private Preference.OnPreferenceChangeListener sMaxUpdateLimitChangeListener = new Preference.OnPreferenceChangeListener() {
+        @Override
+        public boolean onPreferenceChange(Preference preference, Object value) {
+            if(!preference.getKey().equals(getResources().getString(R.string.max_update_file_length_pref_key))) {
+                throw new IllegalArgumentException("using max update limit change listener on an invalid preference " + preference.toString());
+            }
+            else if(!value.getClass().equals(Integer.class)) {
+                throw new IllegalArgumentException("settings preferences for ax update file length should be an integer");
+            }
+
+
+        }
+    };
+
+    private void bindFileSizeLimitChanger() {
     }
 }
