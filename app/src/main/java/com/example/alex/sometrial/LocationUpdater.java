@@ -32,6 +32,7 @@ import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.MalformedURLException;
 import java.net.URL;
+import java.util.ArrayList;
 import java.util.InputMismatchException;
 import java.util.LinkedList;
 import java.util.List;
@@ -69,6 +70,15 @@ public class LocationUpdater extends Service
     private final IBinder mBinder = new LocalBinder();
     private GoogleApiClient mGoogleApiClient;
     private int mMaxUpdatesFileLength;
+    private static List<MinimalLocation> campusCoords = new ArrayList<MinimalLocation>();
+
+    static {
+        campusCoords.add(MinimalLocation.newMinimalLocation(35.304915, -120.677140, 0));
+        campusCoords.add(MinimalLocation.newMinimalLocation(35.302638, -120.666626, 0));
+        campusCoords.add(MinimalLocation.newMinimalLocation(35.305020, -120.662978, 0));
+        campusCoords.add(MinimalLocation.newMinimalLocation(35.303759, -120.658558, 0));
+        campusCoords.add(MinimalLocation.newMinimalLocation(35.298505, -120.655511, 0));
+    }
 
     private SharedPreferences.OnSharedPreferenceChangeListener mSharedPreferenceChangeListener
             = new SharedPreferences.OnSharedPreferenceChangeListener() {
@@ -201,6 +211,10 @@ public class LocationUpdater extends Service
 
     @Override
     public void onLocationChanged(Location location) {
+        if(!insidePolyCampus(MinimalLocation.newMinimalLocation(location))) {
+            return;
+        }
+
         try {
             addToLocationUpdates(MinimalLocation.newMinimalLocation(location));
         }
@@ -277,8 +291,7 @@ public class LocationUpdater extends Service
         URL url;
         try {
             url = new URL(LOCATION_UPDATES_ENDPOINT);
-        }
-        catch(MalformedURLException e) {
+        } catch (MalformedURLException e) {
             Log.e(LOGS_TAG, "couldn't upload file because endpoint url is malformed", e);
             return;
 
@@ -286,36 +299,53 @@ public class LocationUpdater extends Service
         HttpURLConnection urlConnection;
         try {
             urlConnection = (HttpURLConnection) url.openConnection();
-        }
-        catch (IOException e) {
+        } catch (IOException e) {
             Log.e(LOGS_TAG, "coulnd't update locations because couldn't open connection to server", e);
             return;
         }
 
         long fileLengthLong = getFileStreamPath(LOCATION_UPDATES_TABLE).length();
-        if(fileLengthLong > Integer.MAX_VALUE) {
+        if (fileLengthLong > Integer.MAX_VALUE) {
             Log.e(LOGS_TAG, "file is too big. only going to be able to upload first " + Integer.MAX_VALUE + " bytes");
         }
-        int fileLength = (int)fileLengthLong;
+        int fileLength = (int) fileLengthLong;
 
-        try{
+        try {
             urlConnection.setDoOutput(true);
             urlConnection.setFixedLengthStreamingMode(fileLength);
             OutputStream fileUploadStream = new BufferedOutputStream(urlConnection.getOutputStream());
             InputStream fileReadingStream = new BufferedInputStream(openFileInput(LOCATION_UPDATES_TABLE));
 
             int cur, numWritten = 0; // not sure if possible, but if file grows while reading, don't include the new stuff.
-            while((cur = fileReadingStream.read()) != -1 && numWritten++ < fileLength) {
-                fileUploadStream.write((char)cur);
+            while ((cur = fileReadingStream.read()) != -1 && numWritten++ < fileLength) {
+                fileUploadStream.write((char) cur);
             }
             fileReadingStream.close();
             fileUploadStream.close();
-        }
-        catch(IOException e) {
+        } catch (IOException e) {
             Log.e(LOGS_TAG, "error occured in uploading location updates", e);
-        }
-        finally {
+        } finally {
             urlConnection.disconnect();
         }
+    }
+
+    // checks if a new location is within the bounds of cal poly's campus.
+    private boolean insidePolyCampus(MinimalLocation location) {
+        for(int start = 0; start < campusCoords.size(); start++) {
+            if(zCompCrossProd(campusCoords.get(start), campusCoords.get((start + 1) % campusCoords.size()), location) < 0) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private double zCompCrossProd(MinimalLocation start, MinimalLocation end, MinimalLocation other) {
+        double deltaX_1 = end.getLatitude() - start.getLatitude();
+        double deltaX_2 = other.getLatitude() - start.getLatitude();
+        double deltaY_1 = end.getLongitude() - start.getLongitude();
+        double deltaY_2 = other.getLongitude() - start.getLongitude();
+
+        return deltaX_1 * deltaY_2 - deltaY_1 * deltaX_2;
     }
 }
