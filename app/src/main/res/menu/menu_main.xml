@@ -1,12 +1,14 @@
 <menu xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools" tools:context=".MainActivity">
+    <item android:id="@+id/action_refresh_location_updates"
+        android:icon="@drawable/ic_action_refresh"
+        android:title="Refresh Location updates"
+        app:showAsAction="always"/>
     <item android:id="@+id/send_location_data" android:title="Send my locations"
         app:showAsAction="ifRoom" />
     <item android:id="@+id/erase_location_data" android:title="Erase my locations"
         app:showAsAction="ifRoom" />
-    <item android:id="@+id/show_location_data" android:title="Show my collected locations"
-        app:showAsAction="ifRoom"/>
     <item android:id="@+id/launch_settings" android:title="Settings"
         app:showAsAction="ifRoom"/>
 </menu>

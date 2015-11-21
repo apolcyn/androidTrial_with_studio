@@ -118,7 +118,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             }
             return true;
         }
-        else if(id == R.id.show_location_data) {
+        else if(id == R.id.action_refresh_location_updates) {
             if(mBound) {
                 new LocationDisplayer().execute();
             }
