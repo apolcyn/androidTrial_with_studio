@@ -1,13 +1,12 @@
 package com.example.alex.sometrial;
 
-import android.app.Application;
 import android.app.Service;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.location.Location;
 import android.os.Binder;
 import android.os.Bundle;
 import android.os.IBinder;
-import android.preference.Preference;
 import android.preference.PreferenceManager;
 import android.util.Log;
 
@@ -65,12 +64,23 @@ public class LocationUpdater extends Service
     private static final String BASE_SERVER = "http://darkroast-1085.appspot.com/";
     private static final String LOCATION_UPDATES_ENDPOINT = BASE_SERVER + "location_update_big";
     private FileOutputStream updatesWriter;
-    private int mMaxUpdateFileLength
-            = PreferenceManager.findPreference(getResources().getString(R.string.max_update_file_length_pref_key));
-    
+
     // Binder given to clients
     private final IBinder mBinder = new LocalBinder();
     private GoogleApiClient mGoogleApiClient;
+    private int mMaxUpdatesFileLength;
+
+    private SharedPreferences.OnSharedPreferenceChangeListener mSharedPreferenceChangeListener
+            = new SharedPreferences.OnSharedPreferenceChangeListener() {
+        @Override
+        public void onSharedPreferenceChanged(SharedPreferences sharedPreferences, String key) {
+            if(key.equals(getResources().getString(R.string.max_update_file_length_pref_key))) {
+                clearLocationUpdates();
+                mMaxUpdatesFileLength
+                        = Integer.valueOf(sharedPreferences.getString(getResources().getString(R.string.max_update_file_length_pref_key), "0"));
+            }
+        }
+    };
 
     public class LocalBinder extends Binder {
         public LocationUpdater getService() {
@@ -96,6 +106,10 @@ public class LocationUpdater extends Service
     public int onStartCommand(Intent intent, int flags, int startId) {
         Log.d(LOGS_TAG, "hello there");
         ensureUpdateClientsReady();
+        PreferenceManager.getDefaultSharedPreferences(getApplicationContext())
+                .registerOnSharedPreferenceChangeListener(mSharedPreferenceChangeListener);
+        mMaxUpdatesFileLength = Integer.valueOf(PreferenceManager.getDefaultSharedPreferences(getApplicationContext())
+                .getString(getResources().getString(R.string.max_update_file_length_pref_key), "0"));
 
         if(!running) {
             running = true;
@@ -147,8 +161,10 @@ public class LocationUpdater extends Service
         // Connected to Google Play services!
         // The good stuff goes here.
         try {
-            addToLocationUpdates(MinimalLocation.newMinimalLocation(LocationServices.FusedLocationApi.getLastLocation(
-                    mGoogleApiClient)));
+            Location lastLocation = LocationServices.FusedLocationApi.getLastLocation(mGoogleApiClient);
+            if(lastLocation != null) {
+                addToLocationUpdates(MinimalLocation.newMinimalLocation(lastLocation));
+            }
         }
         catch(JSONException e) {
             Log.e(LOGS_TAG, "error adding last logation to udpates list", e);
@@ -160,6 +176,8 @@ public class LocationUpdater extends Service
     @Override
     public void onDestroy() {
         mGoogleApiClient.disconnect();
+        PreferenceManager.getDefaultSharedPreferences(getApplicationContext())
+                .unregisterOnSharedPreferenceChangeListener(mSharedPreferenceChangeListener);
     }
 
     public void clearLocationUpdates() {
@@ -232,7 +250,13 @@ public class LocationUpdater extends Service
     }
 
     private void addToLocationUpdates(MinimalLocation location) throws JSONException {
-        if(updatesWriter == null) {
+        if(getFileStreamPath(LOCATION_UPDATES_TABLE).length() >= mMaxUpdatesFileLength) {
+            Log.i(LOGS_TAG, "didn't add to location updates because they're full");
+        }
+        if(location == null) {
+            return;
+        }
+        else if(updatesWriter == null) {
             Log.e(LOGS_TAG, "couldn't add a location update because couldn't get a writer");
             return;
         }
@@ -293,22 +317,5 @@ public class LocationUpdater extends Service
         finally {
             urlConnection.disconnect();
         }
-    }
-
-    private Preference.OnPreferenceChangeListener sMaxUpdateLimitChangeListener = new Preference.OnPreferenceChangeListener() {
-        @Override
-        public boolean onPreferenceChange(Preference preference, Object value) {
-            if(!preference.getKey().equals(getResources().getString(R.string.max_update_file_length_pref_key))) {
-                throw new IllegalArgumentException("using max update limit change listener on an invalid preference " + preference.toString());
-            }
-            else if(!value.getClass().equals(Integer.class)) {
-                throw new IllegalArgumentException("settings preferences for ax update file length should be an integer");
-            }
-
-
-        }
-    };
-
-    private void bindFileSizeLimitChanger() {
     }
 }
