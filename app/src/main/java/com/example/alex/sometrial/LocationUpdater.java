@@ -18,8 +18,6 @@ import com.google.android.gms.location.LocationListener;
 import com.google.android.gms.location.LocationRequest;
 import com.google.android.gms.location.LocationServices;
 
-import junit.framework.Assert;
-
 import org.json.JSONException;
 
 import java.io.BufferedInputStream;
@@ -71,6 +69,7 @@ public class LocationUpdater extends Service
     private GoogleApiClient mGoogleApiClient;
     private int mMaxUpdatesFileLength;
     private static List<MinimalLocation> campusCoords = new ArrayList<MinimalLocation>();
+    private GoogleApiConnectionStatus mGoogleApiConnectionStatus = GoogleApiConnectionStatus.NOT_CONNECTED_YET;
 
     static {
         campusCoords.add(MinimalLocation.newMinimalLocation(35.304915, -120.677140, 0));
@@ -92,10 +91,18 @@ public class LocationUpdater extends Service
         }
     };
 
+    public enum GoogleApiConnectionStatus {
+        NOT_CONNECTED_YET, CONNECTED, ERROR_WITH_CONNECTION;
+    }
+
     public class LocalBinder extends Binder {
         public LocationUpdater getService() {
             return LocationUpdater.this;
         }
+    }
+
+    public GoogleApiConnectionStatus getGoogleApiConnectionStatus() {
+        return mGoogleApiConnectionStatus;
     }
 
     private void ensureUpdateClientsReady() {
@@ -156,7 +163,7 @@ public class LocationUpdater extends Service
 
     @Override
     public void onConnectionFailed(ConnectionResult result) {
-        Assert.fail("failed to connect to google api services");
+        mGoogleApiConnectionStatus = GoogleApiConnectionStatus.ERROR_WITH_CONNECTION;
     }
 
     @Override
@@ -164,15 +171,18 @@ public class LocationUpdater extends Service
         // The connection has been interrupted.
         // Disable any UI components that depend on Google APIs
         // until onConnected() is called.
+        mGoogleApiConnectionStatus = GoogleApiConnectionStatus.ERROR_WITH_CONNECTION;
     }
 
     @Override
     public void onConnected(Bundle connectionHint) {
         // Connected to Google Play services!
         // The good stuff goes here.
+        mGoogleApiConnectionStatus = GoogleApiConnectionStatus.CONNECTED;
+
         try {
             Location lastLocation = LocationServices.FusedLocationApi.getLastLocation(mGoogleApiClient);
-            if(lastLocation != null) {
+            if(lastLocation != null && insidePolyCampus(MinimalLocation.newMinimalLocation(lastLocation))) {
                 addToLocationUpdates(MinimalLocation.newMinimalLocation(lastLocation));
             }
         }
@@ -186,6 +196,7 @@ public class LocationUpdater extends Service
     @Override
     public void onDestroy() {
         mGoogleApiClient.disconnect();
+        mGoogleApiConnectionStatus = GoogleApiConnectionStatus.NOT_CONNECTED_YET;
         PreferenceManager.getDefaultSharedPreferences(getApplicationContext())
                 .unregisterOnSharedPreferenceChangeListener(mSharedPreferenceChangeListener);
     }
@@ -211,7 +222,7 @@ public class LocationUpdater extends Service
 
     @Override
     public void onLocationChanged(Location location) {
-        if(!insidePolyCampus(MinimalLocation.newMinimalLocation(location))) {
+        if(location == null || !insidePolyCampus(MinimalLocation.newMinimalLocation(location))) {
             return;
         }
 
@@ -247,11 +258,13 @@ public class LocationUpdater extends Service
             }
             catch(InputMismatchException e) {
                 Log.e(LOGS_TAG, "input mismatch reading updates", e);
+                sc.close();
                 handleCorruptFile();
                 return output;
             }
             catch(NoSuchElementException e) {
                 Log.e(LOGS_TAG, "item not found when reading updates", e);
+                sc.close();
                 handleCorruptFile();
                 return output;
             }

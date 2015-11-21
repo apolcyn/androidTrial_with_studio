@@ -35,7 +35,6 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     private final int ZOOM_LEVEL = 18;
     private boolean mBound;
     private LocationUpdater mService;
-    private boolean mapReadyForUpdates = false;
 
     /** Defines callbacks for service binding, passed to bindService() */
     private ServiceConnection mConnection = new ServiceConnection() {
@@ -53,6 +52,9 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         @Override
         public void onServiceDisconnected(ComponentName arg0) {
             mBound = false;
+            mService = null;
+            Intent intent = new Intent(MainActivity.this, LocationUpdater.class);
+            stopService(intent);
         }
     };
 
@@ -61,7 +63,6 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
         myMap = null;
-        mapReadyForUpdates = false;
         lastPrintedLocation = null;
         setupMap();
     }
@@ -127,6 +128,15 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             Intent intent = new Intent(this, SettingsActivity.class);
             startActivity(intent);
         }
+        else if(id == R.id.action_shutdown) {
+            if(mBound) {
+                unbindService(mConnection);
+                mBound = false;
+            }
+            Intent intent = new Intent(this, LocationUpdater.class);
+            stopService(intent);
+
+        }
 
         return super.onOptionsItemSelected(item);
     }
@@ -173,7 +183,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             List<MinimalLocation> output;
 
             if(!mBound) {
-                Log.e(LocationUpdater.LOGS_TAG, "cou;dn't get location upates because not bound to service");
+                Log.e(LocationUpdater.LOGS_TAG, "couldn't get location updates because not bound to service");
                 return new LinkedList<>();
             }
             else {
