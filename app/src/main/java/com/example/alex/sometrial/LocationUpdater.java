@@ -31,11 +31,7 @@ import java.net.HttpURLConnection;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.util.ArrayList;
-import java.util.InputMismatchException;
-import java.util.LinkedList;
 import java.util.List;
-import java.util.NoSuchElementException;
-import java.util.Scanner;
 
 
 /*
@@ -68,15 +64,15 @@ public class LocationUpdater extends Service
     private final IBinder mBinder = new LocalBinder();
     private GoogleApiClient mGoogleApiClient;
     private int mMaxUpdatesFileLength;
-    private static List<MinimalLocation> campusCoords = new ArrayList<MinimalLocation>();
+    public static List<MinimalLocation> campusCoords = new ArrayList<MinimalLocation>();
     private GoogleApiConnectionStatus mGoogleApiConnectionStatus = GoogleApiConnectionStatus.NOT_CONNECTED_YET;
 
     static {
-        campusCoords.add(MinimalLocation.newMinimalLocation(35.304915, -120.677140, 0));
+        campusCoords.add(MinimalLocation.newMinimalLocation(35.297184, -120.665141, 0));
         campusCoords.add(MinimalLocation.newMinimalLocation(35.302638, -120.666626, 0));
         campusCoords.add(MinimalLocation.newMinimalLocation(35.305020, -120.662978, 0));
         campusCoords.add(MinimalLocation.newMinimalLocation(35.303759, -120.658558, 0));
-        campusCoords.add(MinimalLocation.newMinimalLocation(35.298505, -120.655511, 0));
+        campusCoords.add(MinimalLocation.newMinimalLocation(35.297780, -120.654906, 0));
     }
 
     private SharedPreferences.OnSharedPreferenceChangeListener mSharedPreferenceChangeListener
@@ -236,7 +232,9 @@ public class LocationUpdater extends Service
     }
 
     public List<MinimalLocation> getFullUpdateHistory() {
-        List<MinimalLocation> output = new LinkedList<MinimalLocation>();
+        return campusCoords;
+
+       /* List<MinimalLocation> output = new LinkedList<MinimalLocation>();
         Scanner sc;
 
         try {
@@ -273,7 +271,7 @@ public class LocationUpdater extends Service
         }
         sc.close();
 
-        return output;
+        return output;*/
     }
 
     private void addToLocationUpdates(MinimalLocation location) throws JSONException {
