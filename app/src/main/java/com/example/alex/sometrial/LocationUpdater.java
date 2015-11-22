@@ -277,7 +277,13 @@ public class LocationUpdater extends Service
     }
 
     private void addToLocationUpdates(MinimalLocation location) throws JSONException {
-        if(getFileStreamPath(LOCATION_UPDATES_TABLE).length() >= mMaxUpdatesFileLength) {
+        StringBuilder builder = new StringBuilder();
+        builder.append(location.getLatitude() + " ");
+        builder.append(location.getLongitude() + " ");
+        builder.append(location.millisUpdateTimeString + "\r\n");
+        byte[] newUpdate = builder.toString().getBytes();
+
+        if(getFileStreamPath(LOCATION_UPDATES_TABLE).length() + newUpdate.length >= mMaxUpdatesFileLength) {
             Log.i(LOGS_TAG, "didn't add to location updates because they're full");
         }
         if(location == null) {
@@ -288,11 +294,7 @@ public class LocationUpdater extends Service
             return;
         }
         try {
-            StringBuilder builder = new StringBuilder();
-            builder.append(location.getLatitude() + " ");
-            builder.append(location.getLongitude() + " ");
-            builder.append(location.millisUpdateTimeString + "\r\n");
-            updatesWriter.write(builder.toString().getBytes());
+            updatesWriter.write(newUpdate);
             updatesWriter.flush();
         }
         catch(IOException e) {
