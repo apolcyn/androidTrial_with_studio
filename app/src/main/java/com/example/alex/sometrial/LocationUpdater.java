@@ -31,7 +31,11 @@ import java.net.HttpURLConnection;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.util.ArrayList;
+import java.util.InputMismatchException;
+import java.util.LinkedList;
 import java.util.List;
+import java.util.NoSuchElementException;
+import java.util.Scanner;
 
 
 /*
@@ -232,9 +236,7 @@ public class LocationUpdater extends Service
     }
 
     public List<MinimalLocation> getFullUpdateHistory() {
-        return campusCoords;
-
-       /* List<MinimalLocation> output = new LinkedList<MinimalLocation>();
+        List<MinimalLocation> output = new LinkedList<MinimalLocation>();
         Scanner sc;
 
         try {
@@ -271,7 +273,7 @@ public class LocationUpdater extends Service
         }
         sc.close();
 
-        return output;*/
+        return output;
     }
 
     private void addToLocationUpdates(MinimalLocation location) throws JSONException {
