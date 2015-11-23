@@ -8,7 +8,6 @@ import android.os.AsyncTask;
 import android.os.Bundle;
 import android.os.IBinder;
 import android.support.v7.app.AppCompatActivity;
-import android.util.Log;
 import android.view.Menu;
 import android.view.MenuItem;
 
@@ -145,7 +144,6 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         @Override
         protected Void doInBackground(Void... params) {
             if(!mBound) {
-                Log.e(LocationUpdater.LOGS_TAG, "couldn't erase location updates because not bound to service");
             }
             else {
                 mService.clearLocationUpdates();
@@ -163,7 +161,6 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         @Override
         protected Void doInBackground(Void... params) {
             if(!mBound) {
-                Log.e(LocationUpdater.LOGS_TAG, "couldn't send location updates because not bound to service");
             }
             else {
                 mService.sendLocationUpdates();
@@ -183,7 +180,6 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             List<MinimalLocation> output;
 
             if(!mBound) {
-                Log.e(LocationUpdater.LOGS_TAG, "couldn't get location updates because not bound to service");
                 return new LinkedList<>();
             }
             else {

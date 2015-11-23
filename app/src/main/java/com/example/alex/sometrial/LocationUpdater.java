@@ -8,7 +8,6 @@ import android.os.Binder;
 import android.os.Bundle;
 import android.os.IBinder;
 import android.preference.PreferenceManager;
-import android.util.Log;
 
 import com.google.android.gms.common.ConnectionResult;
 import com.google.android.gms.common.api.GoogleApiClient;
@@ -59,7 +58,6 @@ public class LocationUpdater extends Service
     private boolean mResolvingError;
     private static final int REQUEST_RESOLVE_ERROR = 1001;
     public static final String LOCATION_UPDATES_TABLE = "location_update_preferences_table";
-    public static final String LOGS_TAG = "my_logs";
     private static final String BASE_SERVER = "http://darkroast-1085.appspot.com/";
     private static final String LOCATION_UPDATES_ENDPOINT = BASE_SERVER + "location_update_big";
     private FileOutputStream updatesWriter;
@@ -110,7 +108,6 @@ public class LocationUpdater extends Service
             if (updatesWriter == null)
                 updatesWriter = openFileOutput(LOCATION_UPDATES_TABLE, MODE_PRIVATE);
         } catch (IOException e) {
-            Log.e(LOGS_TAG, "couldn't open file writer to write to location updates file", e);
         }
     }
 
@@ -121,7 +118,6 @@ public class LocationUpdater extends Service
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
-        Log.d(LOGS_TAG, "hello there");
         ensureUpdateClientsReady();
         PreferenceManager.getDefaultSharedPreferences(getApplicationContext())
                 .registerOnSharedPreferenceChangeListener(mSharedPreferenceChangeListener);
@@ -187,7 +183,6 @@ public class LocationUpdater extends Service
             }
         }
         catch(JSONException e) {
-            Log.e(LOGS_TAG, "error adding last logation to udpates list", e);
         }
 
         startLocationUpdates();
@@ -209,14 +204,12 @@ public class LocationUpdater extends Service
             }
         }
         catch(IOException e) {
-            Log.e(LOGS_TAG, "error closing updates writer", e);
             updatesWriter = null;
         }
         try {
             updatesWriter = openFileOutput(LOCATION_UPDATES_TABLE, MODE_PRIVATE);
         }
         catch(FileNotFoundException e) {
-            Log.e(LOGS_TAG, "couldn't open updates file", e);
         }
     }
 
@@ -231,7 +224,6 @@ public class LocationUpdater extends Service
         }
         catch(JSONException e) {
             clearLocationUpdates();
-            Log.e(LOGS_TAG, "json error in adding new location. just cleared updates list.", e);
         }
     }
 
@@ -244,7 +236,6 @@ public class LocationUpdater extends Service
             sc = new Scanner(bufferedInputStream);
         }
         catch(IOException e) {
-            Log.e(LOGS_TAG, "couldn't read upates because couldn't get a reader");
             return output;
         }
 
@@ -257,13 +248,11 @@ public class LocationUpdater extends Service
                 time = sc.nextLong();
             }
             catch(InputMismatchException e) {
-                Log.e(LOGS_TAG, "input mismatch reading updates", e);
                 sc.close();
                 handleCorruptFile();
                 return output;
             }
             catch(NoSuchElementException e) {
-                Log.e(LOGS_TAG, "item not found when reading updates", e);
                 sc.close();
                 handleCorruptFile();
                 return output;
@@ -284,13 +273,11 @@ public class LocationUpdater extends Service
         byte[] newUpdate = builder.toString().getBytes();
 
         if(getFileStreamPath(LOCATION_UPDATES_TABLE).length() + newUpdate.length >= mMaxUpdatesFileLength) {
-            Log.i(LOGS_TAG, "didn't add to location updates because they're full");
         }
         if(location == null) {
             return;
         }
         else if(updatesWriter == null) {
-            Log.e(LOGS_TAG, "couldn't add a location update because couldn't get a writer");
             return;
         }
         try {
@@ -298,7 +285,6 @@ public class LocationUpdater extends Service
             updatesWriter.flush();
         }
         catch(IOException e) {
-            Log.e(LOGS_TAG, "failed to write to updates file", e);
         }
     }
 
@@ -307,7 +293,6 @@ public class LocationUpdater extends Service
         try {
             url = new URL(LOCATION_UPDATES_ENDPOINT);
         } catch (MalformedURLException e) {
-            Log.e(LOGS_TAG, "couldn't upload file because endpoint url is malformed", e);
             return;
 
         }
@@ -315,14 +300,11 @@ public class LocationUpdater extends Service
         try {
             urlConnection = (HttpURLConnection) url.openConnection();
         } catch (IOException e) {
-            Log.e(LOGS_TAG, "coulnd't update locations because couldn't open connection to server", e);
             return;
         }
 
         long fileLengthLong = getFileStreamPath(LOCATION_UPDATES_TABLE).length();
-        if (fileLengthLong > Integer.MAX_VALUE) {
-            Log.e(LOGS_TAG, "file is too big. only going to be able to upload first " + Integer.MAX_VALUE + " bytes");
-        }
+
         int fileLength = (int) fileLengthLong;
 
         try {
@@ -338,7 +320,6 @@ public class LocationUpdater extends Service
             fileReadingStream.close();
             fileUploadStream.close();
         } catch (IOException e) {
-            Log.e(LOGS_TAG, "error occured in uploading location updates", e);
         } finally {
             urlConnection.disconnect();
         }
