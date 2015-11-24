@@ -5,6 +5,7 @@
     <ListPreference
         android:key="@string/max_update_file_length_pref_key"
         android:title="@string/pref_title_set_max_update_file_length"
+        android:summary="@string/pref_summary_set_max_update_file_length"
         android:defaultValue="0"
         android:entries="@array/pref_max_update_file_length_titles"
         android:entryValues="@array/pref_max_update_file_length_values"

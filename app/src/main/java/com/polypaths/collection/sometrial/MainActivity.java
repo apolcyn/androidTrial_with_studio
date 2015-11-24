@@ -1,4 +1,4 @@
-package com.example.alex.sometrial;
+package com.polypaths.collection.sometrial;
 
 import android.content.ComponentName;
 import android.content.Context;
@@ -163,7 +163,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             if(!mBound) {
             }
             else {
-                mService.sendLocationUpdates();
+                mService.sendAndStartFresh();
             }
             return null;
         }

@@ -1,4 +1,4 @@
-package com.example.alex.sometrial;
+package com.polypaths.collection.sometrial;
 
 import android.annotation.TargetApi;
 import android.content.Context;
@@ -76,8 +76,8 @@ public class SettingsActivity extends PreferenceActivity {
                 // Set the summary to reflect the new value.
                 preference.setSummary(
                         index >= 0
-                                ? "Choose the maximum amount of location data that can be stored or sent to the servers" +
-                                        " at any given time (in kilobytes). Currently set to: " + listPreference.getEntries()[index]
+                                ? UpdateStarter.getContext().getResources().getString(R.string.pref_summary_set_max_update_file_length)
+                                         + "\r\n" + listPreference.getEntries()[index]
                                 : null);
 
             }

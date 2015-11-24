@@ -1,4 +1,4 @@
-package com.example.alex.sometrial;
+package com.polypaths.collection.sometrial;
 
 import android.app.Service;
 import android.content.Intent;
@@ -266,26 +266,28 @@ public class LocationUpdater extends Service
     }
 
     private void addToLocationUpdates(MinimalLocation location) throws JSONException {
+        if(location == null || updatesWriter == null) {
+            return;
+        }
+
         StringBuilder builder = new StringBuilder();
         builder.append(location.getLatitude() + " ");
         builder.append(location.getLongitude() + " ");
         builder.append(location.millisUpdateTimeString + "\r\n");
         byte[] newUpdate = builder.toString().getBytes();
 
-        if(getFileStreamPath(LOCATION_UPDATES_TABLE).length() + newUpdate.length >= mMaxUpdatesFileLength) {
+        if(getFileStreamPath(LOCATION_UPDATES_TABLE).length() + newUpdate.length <= mMaxUpdatesFileLength) {
+            try {
+                updatesWriter.write(newUpdate);
+                updatesWriter.flush();
+            } catch (IOException e) {
+            }
         }
-        if(location == null) {
-            return;
-        }
-        else if(updatesWriter == null) {
-            return;
-        }
-        try {
-            updatesWriter.write(newUpdate);
-            updatesWriter.flush();
-        }
-        catch(IOException e) {
-        }
+    }
+
+    public void sendAndStartFresh() {
+        sendLocationUpdates();
+        clearLocationUpdates();
     }
 
     public void sendLocationUpdates() {
@@ -294,8 +296,8 @@ public class LocationUpdater extends Service
             url = new URL(LOCATION_UPDATES_ENDPOINT);
         } catch (MalformedURLException e) {
             return;
-
         }
+
         HttpURLConnection urlConnection;
         try {
             urlConnection = (HttpURLConnection) url.openConnection();

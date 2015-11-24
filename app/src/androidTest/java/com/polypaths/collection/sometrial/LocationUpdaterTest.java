@@ -1,4 +1,4 @@
-package com.example.alex.sometrial;
+package com.polypaths.collection.sometrial;
 
 import junit.framework.Assert;
 import junit.framework.TestCase;

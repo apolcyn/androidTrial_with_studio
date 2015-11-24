@@ -1,7 +1,7 @@
 <resources>
     <string name="pref_header_general">General</string>
     <string name="pref_title_set_max_update_file_length">Set location-update storage capacity</string>
-    <string name="pref_summary_set_max_update_file_length">Set this app\'s buffer capacity for location data</string>
+    <string name="pref_summary_set_max_update_file_length">This app\'s buffer capacity for location data</string>
     <string-array name="pref_max_update_file_length_titles">
         <item>0 Kb</item>
         <item>1 Kb</item>
