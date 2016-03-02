@@ -1,5 +1,6 @@
 package com.polypaths.collection.sometrial;
 
+import android.app.AlertDialog;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
@@ -134,7 +135,9 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             }
             Intent intent = new Intent(this, LocationUpdater.class);
             stopService(intent);
-
+        }
+        else if(id == R.id.get_directions_between_places) {
+            new DirectionsFinder().execute();
         }
 
         return super.onOptionsItemSelected(item);
@@ -174,6 +177,26 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         }
     }
 
+    private class DirectionsFinder extends AsyncTask<Void, Void, List<LatLng>> {
+        @Override
+        protected List<LatLng> doInBackground(Void... params) {
+            LatLng start = new LatLng(35.303047, -120.663501);
+            LatLng dest = new LatLng(35.301528, -120.659370);
+            List<LatLng> directions = null;
+            try {
+                directions = new LocationUpdater().getDirectionsBetweenCoordinates(start, dest);
+            }catch(Exception e) {
+                throw new RuntimeException(e);
+            }
+            return directions;
+        }
+
+        @Override
+        protected void onPostExecute(List<LatLng> updates) {
+            displayDirections(updates);
+        }
+    }
+
     private class LocationDisplayer extends AsyncTask<Void, Void, List<MinimalLocation>> {
         @Override
         protected List<MinimalLocation> doInBackground(Void... params) {
@@ -199,6 +222,30 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     private void setupMap() {
         MapFragment mapFragment = (MapFragment) getFragmentManager().findFragmentById(R.id.map);
         mapFragment.getMapAsync(this);
+    }
+
+    public void displayDirections(List<LatLng> directions) {
+        if(directions == null) {
+            new AlertDialog.Builder(getApplicationContext())
+                    .setTitle("Path not found")
+                    .show();
+        }
+        else {
+            if(directions.size() < 2) {
+                new AlertDialog.Builder(getApplicationContext())
+                        .setTitle("Path is too short. it has length: " + directions.size())
+                        .show();
+            }
+            LatLng prev = directions.get(0);
+            for(int i = 1; i < directions.size(); i++) {
+                LatLng cur = directions.get(i);
+                connectLatLng(prev, cur);
+                prev = cur;
+            }
+            CameraUpdate cameraUpdate = CameraUpdateFactory.newLatLngZoom(
+                    new LatLng(prev.latitude, prev.longitude), ZOOM_LEVEL);
+            myMap.moveCamera(cameraUpdate);
+        }
     }
 
     @Override

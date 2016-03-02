@@ -13,4 +13,6 @@
         app:showAsAction="ifRoom"/>
     <item android:id="@+id/action_shutdown" android:title="Stop Location Tracking"
         app:showAsAction="ifRoom"/>
+    <item android:id="@+id/get_directions_between_places" android:title="Get Directions Between lib and UU"
+        app:showAsAction="ifRoom"/>
 </menu>

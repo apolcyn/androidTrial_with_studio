@@ -1,5 +1,6 @@
 package com.polypaths.collection.sometrial;
 
+import android.app.AlertDialog;
 import android.app.Service;
 import android.content.Intent;
 import android.content.SharedPreferences;
@@ -16,8 +17,11 @@ import com.google.android.gms.common.api.GoogleApiClient.OnConnectionFailedListe
 import com.google.android.gms.location.LocationListener;
 import com.google.android.gms.location.LocationRequest;
 import com.google.android.gms.location.LocationServices;
+import com.google.android.gms.maps.model.LatLng;
 
+import org.json.JSONArray;
 import org.json.JSONException;
+import org.json.JSONObject;
 
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
@@ -53,13 +57,17 @@ If they are at the end of the list, then their next key is "-1".
 latitude longitude update-time
 */
 public class LocationUpdater extends Service
-        implements ConnectionCallbacks, OnConnectionFailedListener, LocationListener, Runnable {
+        implements ConnectionCallbacks
+        , OnConnectionFailedListener
+        , LocationListener
+        , Runnable {
     private boolean running;
     private boolean mResolvingError;
     private static final int REQUEST_RESOLVE_ERROR = 1001;
     public static final String LOCATION_UPDATES_TABLE = "location_update_preferences_table";
-    private static final String BASE_SERVER = "http://darkroast-1085.appspot.com/";
+    private static final String BASE_SERVER = "http://pubsub-walkthrough-dot-darkroast-1085.appspot.com/";
     private static final String LOCATION_UPDATES_ENDPOINT = BASE_SERVER + "location_update_big";
+    private static final String GET_DIRECTIONS_ENPOINT = BASE_SERVER + "books/get_directions";
     private FileOutputStream updatesWriter;
 
     // Binder given to clients
@@ -69,6 +77,7 @@ public class LocationUpdater extends Service
     public static List<MinimalLocation> campusCoords = new ArrayList<MinimalLocation>();
     private GoogleApiConnectionStatus mGoogleApiConnectionStatus = GoogleApiConnectionStatus.NOT_CONNECTED_YET;
 
+    /* Used to keep track of the boundaries of Cal Poly campus. */
     static {
         campusCoords.add(MinimalLocation.newMinimalLocation(35.297184, -120.665141, 0));
         campusCoords.add(MinimalLocation.newMinimalLocation(35.302638, -120.666626, 0));
@@ -215,14 +224,13 @@ public class LocationUpdater extends Service
 
     @Override
     public void onLocationChanged(Location location) {
-        if(location == null || !insidePolyCampus(MinimalLocation.newMinimalLocation(location))) {
+        if (location == null || !insidePolyCampus(MinimalLocation.newMinimalLocation(location))) {
             return;
         }
 
         try {
             addToLocationUpdates(MinimalLocation.newMinimalLocation(location));
-        }
-        catch(JSONException e) {
+        } catch (JSONException e) {
             clearLocationUpdates();
         }
     }
@@ -288,6 +296,67 @@ public class LocationUpdater extends Service
     public void sendAndStartFresh() {
         sendLocationUpdates();
         clearLocationUpdates();
+    }
+
+    public List<LatLng> getDirectionsBetweenCoordinates(LatLng start, LatLng dest) throws Exception {
+        URL url;
+        String queryString = "?start_lat=" + start.latitude
+                + "&start_lng=" + start.longitude
+                + "&end_lat=" + dest.latitude
+                + "&end_lng=" + dest.longitude;
+        try {
+            url = new URL(GET_DIRECTIONS_ENPOINT + queryString);
+        } catch (MalformedURLException e) {
+            return null;
+        }
+
+        HttpURLConnection urlConnection;
+        urlConnection = (HttpURLConnection) url.openConnection();
+        urlConnection.setInstanceFollowRedirects(true);
+        List<LatLng> directions = null;
+        try {
+            InputStream in = new BufferedInputStream(urlConnection.getInputStream());
+            directions = parseDirectionsResponse(in);
+        }
+        catch(IOException e) {
+            new AlertDialog.Builder(getApplicationContext())
+                    .setTitle("request for directions failed")
+                    .setMessage("error message: " + urlConnection.getErrorStream().toString());
+        }
+        catch(Exception e) {
+            new AlertDialog.Builder(getApplicationContext())
+                    .setTitle("request for directions failed")
+                    .setMessage("error message: " +e.getMessage());
+        }
+        finally {
+            urlConnection.disconnect();
+        }
+        return directions;
+    }
+
+    /* Converts a server response for a directions query to directions.
+     * @return A list of coordinates to follow in order, or null, of no path was found.
+     */
+    public List<LatLng> parseDirectionsResponse(InputStream jsonLatLngsIn) throws Exception {
+        List<LatLng> response = new ArrayList<LatLng>();
+
+        java.util.Scanner s = new java.util.Scanner(jsonLatLngsIn).useDelimiter("\\A");
+        String jsonLatLngString = s.hasNext() ? s.next() : "";
+
+        JSONObject jsonObject = new JSONObject(jsonLatLngString);
+        boolean pathFound = jsonObject.getBoolean("path_found");
+        if(!pathFound) {
+            return null;
+        }
+        else {
+            JSONArray pointList = jsonObject.getJSONArray("shortest_path");
+
+            for(int i = 0; i < pointList.length(); i++) {
+                JSONObject pointStruct = (JSONObject)pointList.get(i);
+                response.add(new LatLng(pointStruct.getDouble("lat"), pointStruct.getDouble("lng")));
+            }
+            return response;
+        }
     }
 
     public void sendLocationUpdates() {
